@@ -1,469 +1,2432 @@
+/* ==========================================================================
+   THE ELITE STAY – MANAGEMENT REPORT
+   Main Application Logic (Frontend-Only: HTML, CSS, JS, Bootstrap)
+   ========================================================================== */
+
 const ADMIN_PASSWORD = "admin123";
-const SESSION_DURATION = 2 * 60 * 1000;
+const SESSION_DURATION = 30 * 1000; // Preserved 30-second session
 const LOGIN_STATUS_KEY = "eliteStayAdminLoggedIn";
 const LOGIN_TIME_KEY = "eliteStayAdminLoginTime";
 const SELECTED_MONTH_KEY = "eliteStaySelectedMonth";
 
-const months = [
-    "December 2026", "January 2027", "February 2027", "March 2027", "April 2027",
-    "May 2027", "June 2027", "July 2027", "August 2027", "September 2027",
-    "October 2027", "November 2027", "December 2027"
-];
-
-const monthlyData = buildMonthlyData();
+/* ================= GLOBAL APP STATE ================= */
 const state = {
-    module: "profile",
-    profileView: "all",
-    paymentView: "all",
-    expenseView: "overview",
-    moreView: "more",
+    selectedMonth: localStorage.getItem(SELECTED_MONTH_KEY) || AVAILABLE_MONTHS[0],
+    activeModule: "profile", // 'profile' | 'payment' | 'expense' | 'more'
+    activeSubView: "all",    // sub-view key per module
+    // Profile state
+    profileSearch: "",
+    profileTypeFilter: "",
+    profileRoomFilter: "",
+    profileModeFilter: "",
     profilePage: 1,
+    selectedProfileId: null,
+    profileDetailTab: "personal",
+    profileMobileDetailOpen: false,
+    editProfileId: null,
+    // Payment state
+    paymentSearch: "",
+    paymentTypeFilter: "",
+    paymentModeFilter: "",
+    paymentStatusFilter: "",
     paymentPage: 1,
-    visitorPage: 1,
-    selectedProfileId: null
+    // Expense state
+    expenseSearch: "",
+    expenseFreqFilter: "",
+    expenseCatFilter: "",
+    addExpenseFreq: "monthly",
+    // Beds state
+    bedsSearch: "",
+    bedsFloorFilter: "",
+    bedsSeaterFilter: "",
+    bedsStatusFilter: "",
+    // Visitors state
+    visitorSearch: "",
+    visitorRoomFilter: "",
+    visitorSourceFilter: "",
+    visitorPage: 1
 };
 
-const PAGE_SIZE = 5;
-let selectedMonth = localStorage.getItem(SELECTED_MONTH_KEY) || months[0];
-let logoutTimer = null;
+if (!AVAILABLE_MONTHS.includes(state.selectedMonth)) {
+    state.selectedMonth = AVAILABLE_MONTHS[0];
+}
 
+const SIDEBAR_CONFIG = [
+    {
+        key: "profile",
+        label: "Profile",
+        icon: "bi-person-fill",
+        defaultSub: "all",
+        subs: [
+            { key: "all", label: "All Profiles" },
+            { key: "add", label: "Add Profile" },
+            { key: "update", label: "Update Profile" }
+        ]
+    },
+    {
+        key: "payment",
+        label: "Payment",
+        icon: "bi-credit-card-2-front",
+        defaultSub: "all",
+        subs: [
+            { key: "all", label: "All Payments" },
+            { key: "add", label: "Add Payment" },
+            { key: "history", label: "Payment History" },
+            { key: "pending", label: "Pending Payments" }
+        ]
+    },
+    {
+        key: "expense",
+        label: "Expense",
+        icon: "bi-cash-coin",
+        defaultSub: "overview",
+        subs: [
+            { key: "overview", label: "Expense Overview" },
+            { key: "monthly", label: "Monthly Expense" },
+            { key: "weekly", label: "Weekly Expense" },
+            { key: "daily", label: "Daily Expense (Avg)" },
+            { key: "add", label: "Add Expense" },
+            { key: "history", label: "Expense History" }
+        ]
+    },
+    {
+        key: "more",
+        label: "More",
+        icon: "bi-grid-fill",
+        defaultSub: "hub",
+        subs: [
+            { key: "hub", label: "More Overview" },
+            { key: "beds", label: "Beds Details" },
+            { key: "visitors", label: "Visitor Enquiries" }
+        ]
+    }
+];
+
+/* ================= DOM ELEMENTS ================= */
 const loginPage = document.getElementById("loginPage");
 const mainArea = document.getElementById("mainArea");
 const loginForm = document.getElementById("loginForm");
 const passwordInput = document.getElementById("password");
 const loginError = document.getElementById("loginError");
-const monthSelect = document.getElementById("monthSelect");
-const sideNav = document.getElementById("sideNav");
-const moduleNav = document.getElementById("moduleNav");
-const moduleContent = document.getElementById("moduleContent");
-const mobileBottomNav = document.getElementById("mobileBottomNav");
 const sidebar = document.getElementById("sidebar");
+const sidebarBackdrop = document.getElementById("sidebarBackdrop");
+const sidebarNav = document.getElementById("sidebarNav");
 const menuButton = document.getElementById("menuButton");
-const adminButton = document.getElementById("adminButton");
-const adminMenu = document.getElementById("adminMenu");
+const monthSelectDesktop = document.getElementById("monthSelectDesktop");
+const monthSelectMobile = document.getElementById("monthSelectMobile");
+const moduleContainer = document.getElementById("moduleContainer");
+const mobileBottomNav = document.getElementById("mobileBottomNav");
 const logoutButton = document.getElementById("logoutButton");
-const notificationButton = document.getElementById("notificationButton");
-const notificationPanel = document.getElementById("notificationPanel");
+const sessionTimerLabel = document.getElementById("sessionTimerLabel");
+const notifMonthBadge = document.getElementById("notifMonthBadge");
+const notifBody = document.getElementById("notifBody");
+const appModalEl = document.getElementById("appModal");
+const appModalTitle = document.getElementById("appModalTitle");
+const appModalBody = document.getElementById("appModalBody");
 
-months.forEach(month => {
-    const option = document.createElement("option");
-    option.value = month;
-    option.textContent = month;
-    monthSelect.appendChild(option);
-});
-selectedMonth = months.includes(selectedMonth) ? selectedMonth : months[0];
-monthSelect.value = selectedMonth;
+let appModalInstance = null;
+let logoutTimer = null;
+let sessionInterval = null;
 
-const sidebarMenus = {
-    profile: [
-        ["all", "All Profiles", "bi-people"],
-        ["add", "Add Profile", "bi-person-plus"],
-        ["update", "Update Profile", "bi-pencil-square"]
-    ],
-    payment: [
-        ["all", "All Payments", "bi-credit-card"],
-        ["add", "Add Payment", "bi-plus-circle"],
-        ["history", "Payment History", "bi-clock-history"],
-        ["pending", "Pending Payments", "bi-hourglass-split"]
-    ],
-    expense: [
-        ["overview", "Expense Overview", "bi-grid"],
-        ["monthly", "Monthly Expense", "bi-calendar3"],
-        ["weekly", "Weekly Expense", "bi-calendar-week"],
-        ["daily", "Daily Expense (Avg)", "bi-calendar-day"],
-        ["add", "Add Expense", "bi-plus-circle"],
-        ["history", "Expense History", "bi-clock-history"]
-    ],
-    more: [
-        ["more", "More", "bi-grid"],
-        ["reports", "Reports", "bi-bar-chart"],
-        ["rooms", "Room Management", "bi-door-open"],
-        ["beds", "Beds Details", "bi-bed"],
-        ["visitors", "Visitor Enquiries", "bi-megaphone"],
-        ["notice", "Notice & Updates", "bi-megaphone-fill"],
-        ["documents", "Documents", "bi-file-earmark-text"],
-        ["tasks", "Tasks / Reminder", "bi-calendar-check"],
-        ["backup", "Data Backup", "bi-database"],
-        ["settings", "Settings", "bi-gear"]
-    ]
-};
+/* ================= HELPERS ================= */
+function escapeHtml(value) {
+    if (value === null || value === undefined) return "";
+    return String(value).replace(/[&<>'"]/g, char => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "'": "&#39;",
+        '"': "&quot;"
+    }[char]));
+}
 
-function buildMonthlyData() {
-    const data = {};
-    months.forEach(month => {
-        data[month] = {
-            profiles: [],
-            payments: [],
-            expenses: { monthly: [], weekly: [], dailyAverage: [], otherBills: [] },
-            visitors: [],
-            beds: createEmptyBeds(),
-            reports: [],
-            rooms: [],
-            notices: [],
-            documents: [],
-            tasks: []
-        };
-    });
+function formatINR(num) {
+    const val = Number(num) || 0;
+    return "₹" + val.toLocaleString("en-IN");
+}
 
-    data["December 2026"].profiles = [
-        profile("p1", "02 Dec 2026, 10:24 AM", "amanverma@gmail.com", "Student", "Aman Verma", "9876543210", "GL Bajaj Institute of Technology", "BCA", "2nd Year", "Rajesh Verma", "9812345678", "Sector 62, Noida, Uttar Pradesh", "05 Dec 2026", "08 Dec 2026", "A-101", "2 Seater", 5000, 1000, 7000, 8000, "UPI", "receipt_dec2026.pdf"),
-        profile("p2", "05 Dec 2026, 03:18 PM", "priyasharma@gmail.com", "Student", "Priya Sharma", "9988776655", "GL Bajaj Institute of Technology", "BCA", "2nd Year", "Mahesh Sharma", "9898989898", "Indirapuram, Ghaziabad, Uttar Pradesh", "05 Dec 2026", "08 Dec 2026", "A-102", "3 Seater", 5000, 1000, 8000, 8000, "Online", "receipt_dec2026_2.pdf"),
-        profile("p3", "28 Dec 2026, 11:07 AM", "rohit.singh@gmail.com", "Employee", "Rohit Singh", "9123456780", "", "", "", "Suresh Singh", "9000000000", "Noida, Uttar Pradesh", "28 Dec 2026", "01 Jan 2027", "B-201", "1 Seater", 3000, 0, 10000, 5000, "Cash", "receipt_dec2026_3.pdf")
-    ];
+function getInitials(name) {
+    return (name || "U")
+        .trim()
+        .split(/\s+/)
+        .slice(0, 2)
+        .map(part => part[0].toUpperCase())
+        .join("");
+}
 
-    data["December 2026"].payments = [
-        payment("pay1", "02 Dec 2026, 10:24 AM", "amanverma@gmail.com", "Student", "Aman Verma", "9876543210", "A-101", "2 Seater", "December 2026", 7000, "Monthly Rent", 7000, "02 Dec 2026", "UPI", "receipt_dec2026.pdf", "5"),
-        payment("pay2", "05 Dec 2026, 03:18 PM", "priyasharma@gmail.com", "Student", "Priya Sharma", "9988776655", "A-102", "3 Seater", "December 2026", 8000, "Booking Amount", 5000, "05 Dec 2026", "Online", "receipt_dec2026_2.pdf", "5"),
-        payment("pay3", "28 Dec 2026, 11:07 AM", "rohit.singh@gmail.com", "Employee", "Rohit Singh", "9123456780", "B-201", "1 Seater", "December 2026", 10000, "Monthly Rent", 3000, "28 Dec 2026", "Cash", "receipt_dec2026_3.pdf", "4")
-    ];
+function getMonthData(month = state.selectedMonth) {
+    if (!monthlyData[month]) {
+        monthlyData[month] = createEmptyMonthData();
+    }
+    return monthlyData[month];
+}
 
-    data["December 2026"].expenses = {
-        monthly: [{
-            yourName: "Dev Gupta", propertyRent: 85000, electricity: 12500, water: 2800, internet: 1200,
-            workerSalary: 15000, ration: 18000, gas: 3200, cleaning: 2000, furniture: 5000,
-            security: 4500, license: 3000, foodService: 28000, other: 4800, receipt: "monthly_dec2026.pdf"
-        }],
-        weekly: [
-            { yourName: "Dev Gupta", week: "Week 1", dateRange: "01 Dec – 07 Dec", vegetables: 2000, grocery: 2500, cleaning: 500, transport: 1000, other: 1000, receipt: "weekly_1_dec2026.pdf" },
-            { yourName: "Dev Gupta", week: "Week 2", dateRange: "08 Dec – 14 Dec", vegetables: 2000, grocery: 3500, cleaning: 700, transport: 1000, other: 1000, receipt: "weekly_2_dec2026.pdf" },
-            { yourName: "Dev Gupta", week: "Week 3", dateRange: "15 Dec – 21 Dec", vegetables: 2500, grocery: 4500, cleaning: 400, transport: 1000, other: 1100, receipt: "weekly_3_dec2026.pdf" },
-            { yourName: "Dev Gupta", week: "Week 4", dateRange: "22 Dec – 28 Dec", vegetables: 1500, grocery: 4500, cleaning: 400, transport: 1000, other: 1000, receipt: "weekly_4_dec2026.pdf" }
-        ],
-        dailyAverage: [{ yourName: "Dev Gupta", petrol: 2000, milk: 1500, freshVegetables: 3000, repair: 1000, labour: 1500, cleaning: 1000, other: 1000, receipt: "daily_dec2026.pdf" }],
-        otherBills: [{ head: "Other Bills", amount: 0, receipt: "" }]
+function sumObjectValues(obj) {
+    if (!obj) return 0;
+    return Object.values(obj).reduce((sum, val) => sum + (Number(val) || 0), 0);
+}
+
+function getMonthExpenseTotals(month) {
+    const exp = getMonthData(month).expenses;
+    const monthlyTotal = (exp.monthly || []).reduce((s, r) => s + sumObjectValues(r.items), 0);
+    const weeklyTotal = (exp.weekly || []).reduce((s, r) => s + sumObjectValues(r.items), 0);
+    const dailyAvgTotal = (exp.dailyAverage || []).reduce((s, r) => s + sumObjectValues(r.items), 0);
+    return {
+        monthlyTotal,
+        weeklyTotal,
+        dailyAvgTotal,
+        grandTotal: monthlyTotal + weeklyTotal + dailyAvgTotal
     };
-
-    data["December 2026"].visitors = [
-        { timestamp: "01 Dec 2026, 10:24 AM", fullName: "Aman Verma", mobileNumber: "9876543210", roomRequired: "Yes", source: "Google" },
-        { timestamp: "02 Dec 2026, 11:05 AM", fullName: "Rahul Singh", mobileNumber: "9123456780", roomRequired: "Yes", source: "Instagram" },
-        { timestamp: "03 Dec 2026, 02:18 PM", fullName: "Priya Sharma", mobileNumber: "9988776655", roomRequired: "No", source: "Friend / Reference" },
-        { timestamp: "04 Dec 2026, 04:30 PM", fullName: "Nikita Gupta", mobileNumber: "9876501234", roomRequired: "Yes", source: "Google" },
-        { timestamp: "05 Dec 2026, 12:10 PM", fullName: "Rohit Kumar", mobileNumber: "9012345678", roomRequired: "No", source: "Other" }
-    ];
-
-    data["December 2026"].beds = createBedsData();
-    data["January 2027"].beds = createBedsData(120, 106);
-    return data;
 }
 
-function profile(id, timestamp, email, type, fullName, mobile, college, course, year, guardian, guardianMobile, address, bookingDate, shiftingDate, room, roomType, bookingAmount, registrationFee, rent, deposit, paymentMode, receipt) {
-    return { id, timestamp, email, type, fullName, mobile, college, course, year, guardian, guardianMobile, address, bookingDate, shiftingDate, room, roomType, bookingAmount, registrationFee, rent, deposit, paymentMode, receipt, aadhaarFront: "aadhaar_front.jpg", aadhaarBack: "aadhaar_back.jpg", yourId: "college_id.jpg", companyName: type === "Employee" ? "The Elite Stay" : "", companyAddress: type === "Employee" ? "Noida, Uttar Pradesh" : "" };
+function formatNowTimestamp() {
+    const d = new Date();
+    const monthsShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const day = String(d.getDate()).padStart(2, "0");
+    const mon = monthsShort[d.getMonth()];
+    const yr = d.getFullYear();
+    let hr = d.getHours();
+    const min = String(d.getMinutes()).padStart(2, "0");
+    const ampm = hr >= 12 ? "PM" : "AM";
+    hr = hr % 12 || 12;
+    return `${day} ${mon} ${yr}, ${String(hr).padStart(2, "0")}:${min} ${ampm}`;
 }
 
-function payment(id, timestamp, email, type, fullName, mobile, room, roomType, feeMonth, monthlyRent, amountType, amountPaid, paymentDate, mode, receipt, rating) {
-    return { id, timestamp, email, type, fullName, mobile, room, roomType, feeMonth, monthlyRent, amountType, amountPaid, paymentDate, mode, receipt, rating, status: amountPaid >= monthlyRent ? "Paid" : "Pending" };
+function openModal(title, htmlContent) {
+    appModalTitle.textContent = title;
+    appModalBody.innerHTML = htmlContent;
+    if (!appModalInstance && window.bootstrap) {
+        appModalInstance = new bootstrap.Modal(appModalEl);
+    }
+    if (appModalInstance) appModalInstance.show();
 }
 
-function createEmptyBeds() {
-    return { totalBeds: 0, totalStudents: 0, floors: [], rooms: [], seaters: { "1 Seater": 0, "2 Seater": 0, "3 Seater": 0, "4 Seater": 0 }, occupancyTrend: [] };
+function closeSidebarDrawer() {
+    sidebar.classList.remove("open");
+    sidebarBackdrop.classList.remove("show");
 }
 
-function createBedsData(totalBeds = 120, occupied = 104) {
-    const floors = [
-        { floor: "Ground Floor", totalBeds: 30, occupied: 26, empty: 4 },
-        { floor: "1st Floor", totalBeds: 30, occupied: 27, empty: 3 },
-        { floor: "2nd Floor", totalBeds: 30, occupied: 25, empty: 5 },
-        { floor: "3rd Floor", totalBeds: 30, occupied: 26, empty: 4 }
-    ];
-    const rooms = [
-        { room: "A-101", floor: "Ground", roomType: "2 Seater", totalBeds: 2, occupied: 2, empty: 0, students: "Aman Verma, Rahul Singh" },
-        { room: "A-102", floor: "Ground", roomType: "3 Seater", totalBeds: 3, occupied: 3, empty: 0, students: "Priya Sharma, Nikita Gupta, Rohit Kumar" },
-        { room: "B-201", floor: "1st", roomType: "4 Seater", totalBeds: 4, occupied: 3, empty: 1, students: "Ankit Yadav, Saurabh, Vivek" },
-        { room: "B-202", floor: "1st", roomType: "2 Seater", totalBeds: 2, occupied: 1, empty: 1, students: "Neha" },
-        { room: "C-301", floor: "2nd", roomType: "1 Seater", totalBeds: 1, occupied: 1, empty: 0, students: "Rohit Singh" }
-    ];
-    return { totalBeds, totalStudents: occupied, floors, rooms, seaters: { "1 Seater": 10, "2 Seater": 24, "3 Seater": 36, "4 Seater": 50 }, occupancyTrend: [{ month: "Dec 2026", percent: 86.7 }, { month: "Jan 2027", percent: totalBeds ? Math.round((occupied / totalBeds) * 1000) / 10 : 0 }] };
-}
-
-function getMonthData() { return monthlyData[selectedMonth]; }
-function money(value) { return `₹${Number(value || 0).toLocaleString("en-IN")}`; }
-function escapeHtml(value) { return String(value ?? "").replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char])); }
-function totalExpenseRecord(record) { return Object.keys(record).reduce((sum, key) => typeof record[key] === "number" ? sum + record[key] : sum, 0); }
-function getMonthlyExpenseTotal() { return getMonthData().expenses.monthly.reduce((sum, r) => sum + totalExpenseRecord(r), 0); }
-function getWeeklyExpenseTotal() { return getMonthData().expenses.weekly.reduce((sum, r) => sum + totalExpenseRecord(r), 0); }
-function getDailyExpenseTotal() { return getMonthData().expenses.dailyAverage.reduce((sum, r) => sum + totalExpenseRecord(r), 0); }
-function getOtherBillsTotal() { return getMonthData().expenses.otherBills.reduce((sum, r) => sum + Number(r.amount || 0), 0); }
-function getTotalExpense() { return getMonthlyExpenseTotal() + getWeeklyExpenseTotal() + getDailyExpenseTotal() + getOtherBillsTotal(); }
-function getPaymentTotal() { return getMonthData().payments.reduce((sum, r) => sum + Number(r.amountPaid || 0), 0); }
-function getPaymentPending() { return getMonthData().payments.reduce((sum, r) => sum + Math.max(0, Number(r.monthlyRent || 0) - Number(r.amountPaid || 0)), 0); }
-
+/* ================= AUTH & 30-SECOND SESSION ================= */
 function checkExistingSession() {
     const isLoggedIn = localStorage.getItem(LOGIN_STATUS_KEY);
     const loginTime = Number(localStorage.getItem(LOGIN_TIME_KEY));
     if (isLoggedIn !== "true" || !loginTime) return showLoginPage();
-    if (Date.now() - loginTime >= SESSION_DURATION) return logoutAdmin();
+    const elapsedTime = Date.now() - loginTime;
+    if (elapsedTime >= SESSION_DURATION) return logoutAdmin();
     showMainArea();
     startSessionTimer(loginTime);
 }
 
 function startSessionTimer(loginTime) {
     if (logoutTimer) clearTimeout(logoutTimer);
-    const remaining = SESSION_DURATION - (Date.now() - loginTime);
-    if (remaining <= 0) return logoutAdmin();
-    logoutTimer = setTimeout(logoutAdmin, remaining);
+    if (sessionInterval) clearInterval(sessionInterval);
+    const remainingTime = SESSION_DURATION - (Date.now() - loginTime);
+    if (remainingTime <= 0) return logoutAdmin();
+
+    updateSessionCountdown(loginTime);
+    sessionInterval = setInterval(() => updateSessionCountdown(loginTime), 1000);
+    logoutTimer = setTimeout(logoutAdmin, remainingTime);
+}
+
+function updateSessionCountdown(loginTime) {
+    const remSec = Math.max(0, Math.ceil((SESSION_DURATION - (Date.now() - loginTime)) / 1000));
+    if (sessionTimerLabel) sessionTimerLabel.textContent = `${remSec}s`;
 }
 
 function showMainArea() {
     loginPage.classList.add("d-none");
     mainArea.classList.remove("d-none");
-    mobileBottomNav.classList.remove("d-none");
     mainArea.setAttribute("aria-hidden", "false");
     renderApp();
 }
 
 function showLoginPage() {
     mainArea.classList.add("d-none");
-    mobileBottomNav.classList.add("d-none");
     mainArea.setAttribute("aria-hidden", "true");
     loginPage.classList.remove("d-none");
 }
 
 function logoutAdmin() {
     if (logoutTimer) clearTimeout(logoutTimer);
+    if (sessionInterval) clearInterval(sessionInterval);
     logoutTimer = null;
+    sessionInterval = null;
     localStorage.removeItem(LOGIN_STATUS_KEY);
     localStorage.removeItem(LOGIN_TIME_KEY);
+    closeSidebarDrawer();
     showLoginPage();
     loginForm.reset();
     loginError.textContent = "";
 }
 
-function renderApp() {
-    monthSelect.value = selectedMonth;
-    renderSidebar();
-    renderModule();
-    updateMobileNav();
+/* ================= MONTH SELECTOR & NAVIGATION ================= */
+function initMonthSelectors() {
+    const optionsHtml = AVAILABLE_MONTHS.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join("");
+    monthSelectDesktop.innerHTML = optionsHtml;
+    monthSelectMobile.innerHTML = optionsHtml;
+    monthSelectDesktop.value = state.selectedMonth;
+    monthSelectMobile.value = state.selectedMonth;
+
+    function handleMonthChange(newMonth) {
+        state.selectedMonth = newMonth;
+        localStorage.setItem(SELECTED_MONTH_KEY, newMonth);
+        monthSelectDesktop.value = newMonth;
+        monthSelectMobile.value = newMonth;
+        state.profilePage = 1;
+        state.paymentPage = 1;
+        state.visitorPage = 1;
+        state.selectedProfileId = null;
+        state.profileMobileDetailOpen = false;
+        renderApp();
+    }
+
+    monthSelectDesktop.addEventListener("change", () => handleMonthChange(monthSelectDesktop.value));
+    monthSelectMobile.addEventListener("change", () => handleMonthChange(monthSelectMobile.value));
 }
 
-function renderSidebar() {
-    moduleNav.innerHTML = [
-        ["profile", "Profile", "bi-person-fill"],
-        ["payment", "Payment", "bi-credit-card"],
-        ["expense", "Expense", "bi-coin"],
-        ["more", "More", "bi-grid"]
-    ].map(([key, label, icon]) => `<button type="button" class="module-nav-item ${state.module === key ? "active" : ""}" data-module="${key}"><i class="bi ${icon}"></i><span>${label}</span></button>`).join("");
-    moduleNav.querySelectorAll(".module-nav-item").forEach(button => button.addEventListener("click", () => {
-        setModule(button.dataset.module);
-        sidebar.classList.remove("open");
-    }));
-
-    const activeKey = state.module === "profile" ? state.profileView : state.module === "payment" ? state.paymentView : state.module === "expense" ? state.expenseView : state.moreView;
-    sideNav.innerHTML = sidebarMenus[state.module].map(([key, label, icon]) => `
-        <button type="button" class="side-nav-item ${key === activeKey ? "active" : ""}" data-view="${key}">
-            <i class="bi ${icon}"></i><span>${label}</span>
-        </button>
-    `).join("");
-    sideNav.querySelectorAll(".side-nav-item").forEach(button => button.addEventListener("click", () => {
-        setModuleView(state.module, button.dataset.view);
-        sidebar.classList.remove("open");
-    }));
-}
-
-function setModule(module) {
-    state.module = module;
+function switchModule(moduleKey, subViewKey = null) {
+    const mod = SIDEBAR_CONFIG.find(m => m.key === moduleKey) || SIDEBAR_CONFIG[0];
+    state.activeModule = mod.key;
+    state.activeSubView = subViewKey || mod.defaultSub;
+    state.profileMobileDetailOpen = false;
+    closeSidebarDrawer();
     renderApp();
+    window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function setModuleView(module, view) {
-    if (module === "profile") state.profileView = view;
-    if (module === "payment") state.paymentView = view;
-    if (module === "expense") state.expenseView = view;
-    if (module === "more") state.moreView = view;
-    renderApp();
+function renderNavigation() {
+    // 1. Desktop / Drawer Sidebar: shows main modules and expands ONLY the active module's sub-options
+    sidebarNav.innerHTML = SIDEBAR_CONFIG.map(mod => {
+        const isActive = state.activeModule === mod.key;
+        const subHtml = isActive ? `
+            <div class="side-submenu">
+                ${mod.subs.map(sub => `
+                    <button type="button"
+                        class="side-sub-btn ${state.activeSubView === sub.key ? "active" : ""}"
+                        data-module="${mod.key}"
+                        data-sub="${sub.key}">
+                        ${escapeHtml(sub.label)}
+                    </button>
+                `).join("")}
+            </div>
+        ` : "";
+
+        return `
+            <div class="side-module-group">
+                <button type="button"
+                    class="side-module-btn ${isActive ? "active" : ""}"
+                    data-module="${mod.key}">
+                    <i class="bi ${mod.icon}"></i>
+                    <span>${escapeHtml(mod.label)}</span>
+                    <i class="bi ${isActive ? "bi-chevron-down" : "bi-chevron-right"} chevron"></i>
+                </button>
+                ${subHtml}
+            </div>
+        `;
+    }).join("");
+
+    sidebarNav.querySelectorAll(".side-module-btn").forEach(btn => {
+        btn.addEventListener("click", () => switchModule(btn.dataset.module));
+    });
+
+    sidebarNav.querySelectorAll(".side-sub-btn").forEach(btn => {
+        btn.addEventListener("click", () => switchModule(btn.dataset.module, btn.dataset.sub));
+    });
+
+    // 2. Mobile Fixed Bottom Navigation (Always 4 buttons)
+    mobileBottomNav.querySelectorAll(".bottom-nav-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.module === state.activeModule);
+    });
 }
 
-function updateMobileNav() {
-    mobileBottomNav.querySelectorAll("button").forEach(button => button.classList.toggle("active", button.dataset.module === state.module));
-}
+function renderNotifications() {
+    const data = getMonthData();
+    const pendingPayments = data.payments.filter(p => p.status === "Pending").length;
+    const rooms = (data.beds && data.beds.rooms) || [];
+    const totalBeds = rooms.reduce((s, r) => s + r.totalBeds, 0);
+    const occBeds = rooms.reduce((s, r) => s + r.occupiedBeds, 0);
+    const emptyBeds = Math.max(0, totalBeds - occBeds);
+    const expTotals = getMonthExpenseTotals(state.selectedMonth);
 
-function renderModule() {
-    if (state.module === "profile") renderProfile();
-    else if (state.module === "payment") renderPayment();
-    else if (state.module === "expense") renderExpense();
-    else renderMore();
-}
-
-function pageHeader(icon, title, subtitle) {
-    return `<section class="page-heading"><div class="heading-icon"><i class="bi ${icon}"></i></div><div><h1>${title}</h1><p>${subtitle}</p></div></section>`;
-}
-
-function monthCard() { return `<div class="selected-month-card"><i class="bi bi-calendar3"></i><div><span>Selected Month</span><strong>${escapeHtml(selectedMonth)}</strong></div></div>`; }
-function statCard(icon, label, value, extraClass = "") { return `<article class="stat-card ${extraClass}"><div class="stat-icon"><i class="bi ${icon}"></i></div><div><span>${label}</span><strong>${value}</strong></div></article>`; }
-
-function renderProfile() {
-    if (state.profileView === "add") return renderSimpleForm("Add Profile", "bi-person-plus", "Add a new profile using the same fields as the profile data structure.", "profile");
-    if (state.profileView === "update") return renderSimpleForm("Update Profile", "bi-pencil-square", "Select a profile from All Profiles to review and update its information.", "profile");
-
-    const profiles = getMonthData().profiles;
-    const students = profiles.filter(p => p.type === "Student").length;
-    const employees = profiles.filter(p => p.type === "Employee").length;
-    const beds = profiles.length;
-    moduleContent.innerHTML = `
-        ${pageHeader("bi-person", "Profile Management", "Manage all students & employees profiles, booking and payment details.")}
-        <section class="stats-grid">${statCard("bi-people-fill", "Total Profiles", profiles.length, "highlight")}${statCard("bi-mortarboard-fill", "Students", students)}${statCard("bi-briefcase-fill", "Employees", employees)}${statCard("bi-bed-fill", "Occupied Rooms", beds)}${monthCard()}</section>
-        <section class="filter-panel app-panel"><div class="filter-controls profile-filters"><div class="search-wrap"><i class="bi bi-search"></i><input id="profileSearch" type="search" placeholder="Search by name, mobile, email, college or company..."></div><select id="profileType"><option value="">All (Student/Employee)</option><option>Student</option><option>Employee</option></select><select id="profileRoom"><option value="">All Room Type</option><option>1 Seater</option><option>2 Seater</option><option>3 Seater</option><option>4 Seater</option></select><select id="profilePayment"><option value="">All Payment Mode</option><option>UPI</option><option>Online</option><option>Cash</option></select><button class="reset-button" id="profileReset"><i class="bi bi-arrow-counterclockwise"></i> Reset</button></div></section>
-        <div class="module-grid profile-grid"><section class="app-panel table-panel"><div class="panel-heading"><h2><i class="bi bi-people"></i> Profiles</h2></div><div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Timestamp</th><th>Full Name</th><th>Type</th><th>Mobile Number</th><th>Room No.</th><th>Room Type</th><th>Actions</th></tr></thead><tbody id="profileTable"></tbody></table></div><div class="table-footer"><span id="profileSummary"></span><div id="profilePagination" class="pagination"></div></div></section><aside id="profileDetails" class="app-panel detail-panel"></aside></div>
-        <section class="app-panel summary-strip"><h2><i class="bi bi-calendar3"></i> This Month Summary (${escapeHtml(selectedMonth)})</h2><div class="summary-strip-grid"><div><i class="bi bi-people-fill"></i><span>Total Profiles</span><b>${profiles.length}</b></div><div><i class="bi bi-mortarboard-fill"></i><span>Students</span><b>${students}</b></div><div><i class="bi bi-briefcase-fill"></i><span>Employees</span><b>${employees}</b></div><div><i class="bi bi-bed-fill"></i><span>Rooms Occupied</span><b>${beds}</b></div></div></section>
+    notifMonthBadge.textContent = state.selectedMonth;
+    notifBody.innerHTML = `
+        <div class="notif-item"><span>Profiles Recorded</span><strong>${data.profiles.length}</strong></div>
+        <div class="notif-item"><span>Pending Payments</span><strong class="${pendingPayments ? "text-danger" : "text-success"}">${pendingPayments}</strong></div>
+        <div class="notif-item"><span>Total Expenses</span><strong>${formatINR(expTotals.grandTotal)}</strong></div>
+        <div class="notif-item"><span>Empty Beds Available</span><strong class="text-primary">${emptyBeds}</strong></div>
+        <div class="notif-item"><span>Visitor Enquiries</span><strong>${data.visitors.length}</strong></div>
     `;
-    bindProfileFilters();
-    renderProfileTable();
-    if (!state.selectedProfileId && profiles[0]) state.selectedProfileId = profiles[0].id;
-    renderProfileDetails();
 }
 
-function bindProfileFilters() {
-    ["profileSearch", "profileType", "profileRoom", "profilePayment"].forEach(id => document.getElementById(id).addEventListener("input", () => { state.profilePage = 1; renderProfileTable(); }));
-    document.getElementById("profileReset").addEventListener("click", () => { document.getElementById("profileSearch").value = ""; document.getElementById("profileType").value = ""; document.getElementById("profileRoom").value = ""; document.getElementById("profilePayment").value = ""; state.profilePage = 1; renderProfileTable(); });
+function renderApp() {
+    renderNavigation();
+    renderNotifications();
+
+    if (state.activeModule === "profile") {
+        renderProfileModule();
+    } else if (state.activeModule === "payment") {
+        renderPaymentModule();
+    } else if (state.activeModule === "expense") {
+        renderExpenseModule();
+    } else if (state.activeModule === "more") {
+        if (state.activeSubView === "beds") {
+            renderBedsModule();
+        } else if (state.activeSubView === "visitors") {
+            renderVisitorsModule();
+        } else {
+            renderMoreHub();
+        }
+    }
 }
 
-function getFilteredProfiles() {
-    const q = document.getElementById("profileSearch")?.value.trim().toLowerCase() || "";
-    const type = document.getElementById("profileType")?.value || "";
-    const room = document.getElementById("profileRoom")?.value || "";
-    const mode = document.getElementById("profilePayment")?.value || "";
-    return getMonthData().profiles.filter(p => (!q || [p.fullName, p.mobile, p.email, p.college, p.companyName].some(v => String(v).toLowerCase().includes(q))) && (!type || p.type === type) && (!room || p.roomType === room) && (!mode || p.paymentMode === mode));
-}
+/* ==========================================================================
+   MODULE 1: PROFILE MANAGEMENT
+   ========================================================================== */
+function renderProfileModule() {
+    if (state.activeSubView === "add") return renderProfileForm(null);
+    if (state.activeSubView === "update") return renderUpdateProfileView();
 
-function renderProfileTable() {
-    const rows = getFilteredProfiles();
-    const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-    state.profilePage = Math.min(state.profilePage, totalPages);
+    const data = getMonthData();
+    const profiles = data.profiles || [];
+    const studentCount = profiles.filter(p => p.userType === "Student").length;
+    const empCount = profiles.filter(p => p.userType === "Employee").length;
+    const occupiedRooms = new Set(profiles.map(p => p.roomNumber).filter(Boolean)).size;
+
+    // Filter records
+    const q = state.profileSearch.trim().toLowerCase();
+    const filtered = profiles.filter(p => {
+        const matchQ = !q || [p.fullName, p.mobileNumber, p.email, p.collegeName, p.companyName, p.roomNumber]
+            .some(v => (v || "").toLowerCase().includes(q));
+        const matchType = !state.profileTypeFilter || p.userType === state.profileTypeFilter;
+        const matchRoom = !state.profileRoomFilter || p.roomType === state.profileRoomFilter;
+        const matchMode = !state.profileModeFilter || p.paymentMode === state.profileModeFilter;
+        return matchQ && matchType && matchRoom && matchMode;
+    });
+
+    const PAGE_SIZE = 5;
+    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    if (state.profilePage > totalPages) state.profilePage = totalPages;
     const start = (state.profilePage - 1) * PAGE_SIZE;
-    const pageRows = rows.slice(start, start + PAGE_SIZE);
-    const tbody = document.getElementById("profileTable");
-    if (!tbody) return;
-    tbody.innerHTML = pageRows.length ? pageRows.map((p, i) => `<tr><td>${start + i + 1}</td><td>${escapeHtml(p.timestamp)}</td><td><strong>${escapeHtml(p.fullName)}</strong></td><td><span class="type-pill ${p.type.toLowerCase()}">${escapeHtml(p.type)}</span></td><td>${escapeHtml(p.mobile)}</td><td>${escapeHtml(p.room)}</td><td>${escapeHtml(p.roomType)}</td><td class="action-cell"><button class="table-icon-btn" data-action="view" data-id="${p.id}" title="View"><i class="bi bi-eye"></i></button><button class="table-icon-btn" data-action="edit" data-id="${p.id}" title="Edit"><i class="bi bi-pencil"></i></button></td></tr>`).join("") : `<tr><td colspan="8" class="empty-row">No profile records found for this month.</td></tr>`;
-    tbody.querySelectorAll("button").forEach(btn => btn.addEventListener("click", () => { state.selectedProfileId = btn.dataset.id; renderProfileDetails(); }));
-    document.getElementById("profileSummary").textContent = `Showing ${rows.length ? start + 1 : 0} – ${Math.min(start + PAGE_SIZE, rows.length)} of ${rows.length} profiles`;
-    renderPagination(document.getElementById("profilePagination"), totalPages, state.profilePage, page => { state.profilePage = page; renderProfileTable(); });
+    const pageRecords = filtered.slice(start, start + PAGE_SIZE);
+
+    // Ensure selected profile for desktop right panel
+    let selectedProfile = profiles.find(p => p.id === state.selectedProfileId) || filtered[0] || null;
+    if (selectedProfile) state.selectedProfileId = selectedProfile.id;
+
+    // Mobile Full-Screen Profile Detail Mode
+    if (state.profileMobileDetailOpen && selectedProfile && window.innerWidth < 992) {
+        renderMobileProfileDetail(selectedProfile);
+        return;
+    }
+
+    moduleContainer.innerHTML = `
+        <div class="page-header">
+            <div class="page-title-wrap">
+                <div class="page-icon"><i class="bi bi-person-fill"></i></div>
+                <div>
+                    <h1>Profile Management</h1>
+                    <p>Manage all students &amp; employees profiles, booking and payment details.</p>
+                </div>
+            </div>
+            <button type="button" class="btn btn-primary rounded-3 fw-semibold" id="quickAddProfileBtn">
+                <i class="bi bi-person-plus me-1"></i>Add Profile
+            </button>
+        </div>
+
+        <section class="kpi-grid">
+            <article class="kpi-card highlight">
+                <div class="kpi-icon"><i class="bi bi-people-fill"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">Total Profiles</div><div class="kpi-value">${profiles.length}</div></div>
+            </article>
+            <article class="kpi-card">
+                <div class="kpi-icon"><i class="bi bi-mortarboard-fill"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">Students</div><div class="kpi-value">${studentCount}</div></div>
+            </article>
+            <article class="kpi-card">
+                <div class="kpi-icon purple"><i class="bi bi-briefcase-fill"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">Employees</div><div class="kpi-value">${empCount}</div></div>
+            </article>
+            <article class="kpi-card">
+                <div class="kpi-icon green"><i class="bi bi-door-closed-fill"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">Occupied Rooms</div><div class="kpi-value">${occupiedRooms}</div></div>
+            </article>
+            <article class="kpi-card">
+                <div class="kpi-icon"><i class="bi bi-calendar3"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">Selected Month</div><div class="kpi-value month-val">${escapeHtml(state.selectedMonth)}</div></div>
+            </article>
+        </section>
+
+        <section class="filter-card">
+            <div class="search-box">
+                <i class="bi bi-search"></i>
+                <input type="search" id="profileSearchInput" value="${escapeHtml(state.profileSearch)}" placeholder="Search by name, mobile, email, college or company...">
+            </div>
+            <select id="profileTypeFilter" class="filter-select">
+                <option value="">All (Student/Employee)</option>
+                <option value="Student" ${state.profileTypeFilter === "Student" ? "selected" : ""}>Student</option>
+                <option value="Employee" ${state.profileTypeFilter === "Employee" ? "selected" : ""}>Employee</option>
+            </select>
+            <select id="profileRoomFilter" class="filter-select">
+                <option value="">All Room Type</option>
+                <option value="1 Seater" ${state.profileRoomFilter === "1 Seater" ? "selected" : ""}>1 Seater</option>
+                <option value="2 Seater" ${state.profileRoomFilter === "2 Seater" ? "selected" : ""}>2 Seater</option>
+                <option value="3 Seater" ${state.profileRoomFilter === "3 Seater" ? "selected" : ""}>3 Seater</option>
+                <option value="4 Seater" ${state.profileRoomFilter === "4 Seater" ? "selected" : ""}>4 Seater</option>
+            </select>
+            <select id="profileModeFilter" class="filter-select">
+                <option value="">All Payment Mode</option>
+                <option value="UPI" ${state.profileModeFilter === "UPI" ? "selected" : ""}>UPI</option>
+                <option value="Online" ${state.profileModeFilter === "Online" ? "selected" : ""}>Online</option>
+                <option value="Cash" ${state.profileModeFilter === "Cash" ? "selected" : ""}>Cash</option>
+                <option value="Bank Transfer" ${state.profileModeFilter === "Bank Transfer" ? "selected" : ""}>Bank Transfer</option>
+            </select>
+            <button type="button" class="btn-reset" id="profileResetBtn"><i class="bi bi-arrow-clockwise"></i> Reset</button>
+        </section>
+
+        <div class="profile-split">
+            <div>
+                <div class="panel-card">
+                    <!-- Desktop Table -->
+                    <div class="table-wrap desktop-only-table">
+                        <div class="table-responsive-custom">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Timestamp</th>
+                                        <th>Full Name</th>
+                                        <th>Type</th>
+                                        <th>Mobile Number</th>
+                                        <th>Room No.</th>
+                                        <th>Room Type</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${pageRecords.length ? pageRecords.map((p, idx) => `
+                                        <tr class="${selectedProfile && selectedProfile.id === p.id ? "selected-row" : ""}" data-select-profile="${escapeHtml(p.id)}" style="cursor:pointer;">
+                                            <td>${start + idx + 1}</td>
+                                            <td class="text-nowrap small">${escapeHtml(p.timestamp)}</td>
+                                            <td class="fw-semibold">${escapeHtml(p.fullName)}</td>
+                                            <td><span class="badge-soft ${p.userType === "Student" ? "badge-student" : "badge-employee"}">${escapeHtml(p.userType)}</span></td>
+                                            <td>${escapeHtml(p.mobileNumber)}</td>
+                                            <td><span class="badge-soft badge-room">${escapeHtml(p.roomNumber)}</span></td>
+                                            <td>${escapeHtml(p.roomType)}</td>
+                                            <td class="text-nowrap">
+                                                <button type="button" class="action-icon-btn me-1" data-view-profile="${escapeHtml(p.id)}" title="View Profile"><i class="bi bi-eye"></i></button>
+                                                <button type="button" class="action-icon-btn" data-edit-profile="${escapeHtml(p.id)}" title="Edit Profile"><i class="bi bi-pencil"></i></button>
+                                            </td>
+                                        </tr>
+                                    `).join("") : `<tr><td colspan="8" class="empty-cell">No profiles found for ${escapeHtml(state.selectedMonth)}.</td></tr>`}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Mobile Profile Cards -->
+                    <div class="mobile-cards-list">
+                        ${pageRecords.length ? pageRecords.map(p => `
+                            <div class="mobile-record-card" data-mobile-profile="${escapeHtml(p.id)}">
+                                <div class="d-flex align-items-center gap-3">
+                                    <div class="profile-avatar">${escapeHtml(getInitials(p.fullName))}</div>
+                                    <div class="flex-grow-1 min-w-0">
+                                        <div class="fw-bold text-dark text-truncate">${escapeHtml(p.fullName)}</div>
+                                        <div class="small text-muted text-truncate"><i class="bi bi-envelope me-1"></i>${escapeHtml(p.email)}</div>
+                                        <div class="small text-muted"><i class="bi bi-telephone me-1"></i>${escapeHtml(p.mobileNumber)}</div>
+                                    </div>
+                                    <div class="text-end d-flex flex-column align-items-end gap-1">
+                                        <span class="badge-soft ${p.userType === "Student" ? "badge-student" : "badge-employee"}">${escapeHtml(p.userType)}</span>
+                                        <span class="badge-soft badge-room"><i class="bi bi-door-open me-1"></i>${escapeHtml(p.roomNumber)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join("") : `<div class="text-center text-muted py-4">No profiles found for ${escapeHtml(state.selectedMonth)}.</div>`}
+                    </div>
+
+                    <!-- Pagination -->
+                    <div class="pagination-bar">
+                        <div>Showing ${filtered.length ? start + 1 : 0} – ${Math.min(start + PAGE_SIZE, filtered.length)} of ${filtered.length} profiles</div>
+                        <div class="pagination-controls" id="profilePagination"></div>
+                    </div>
+                </div>
+
+                <!-- This Month Summary Card -->
+                <div class="panel-card mt-3">
+                    <div class="panel-title mb-3"><i class="bi bi-calendar-check"></i> This Month Summary (${escapeHtml(state.selectedMonth)})</div>
+                    <div class="row g-3 text-center text-sm-start">
+                        <div class="col-6 col-sm-3"><div class="small text-muted">Total Profiles</div><div class="fs-5 fw-bold text-primary">${profiles.length}</div></div>
+                        <div class="col-6 col-sm-3"><div class="small text-muted">Students</div><div class="fs-5 fw-bold text-success">${studentCount}</div></div>
+                        <div class="col-6 col-sm-3"><div class="small text-muted">Employees</div><div class="fs-5 fw-bold" style="color:var(--purple-600);">${empCount}</div></div>
+                        <div class="col-6 col-sm-3"><div class="small text-muted">Rooms Occupied</div><div class="fs-5 fw-bold text-dark">${occupiedRooms}</div></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Desktop Right-Side Profile Details Panel -->
+            <div class="panel-card d-none d-lg-block" id="desktopProfileDetails">
+                ${selectedProfile ? buildProfileDetailPanelHtml(selectedProfile) : `
+                    <div class="text-center py-5 text-muted">
+                        <i class="bi bi-person-badge fs-1 d-block mb-2 text-primary opacity-50"></i>
+                        Select a profile from the list to view full details.
+                    </div>
+                `}
+            </div>
+        </div>
+    `;
+
+    // Bind events
+    document.getElementById("quickAddProfileBtn").addEventListener("click", () => switchModule("profile", "add"));
+    document.getElementById("profileSearchInput").addEventListener("input", e => {
+        state.profileSearch = e.target.value;
+        state.profilePage = 1;
+        renderProfileModule();
+    });
+    document.getElementById("profileTypeFilter").addEventListener("change", e => {
+        state.profileTypeFilter = e.target.value;
+        state.profilePage = 1;
+        renderProfileModule();
+    });
+    document.getElementById("profileRoomFilter").addEventListener("change", e => {
+        state.profileRoomFilter = e.target.value;
+        state.profilePage = 1;
+        renderProfileModule();
+    });
+    document.getElementById("profileModeFilter").addEventListener("change", e => {
+        state.profileModeFilter = e.target.value;
+        state.profilePage = 1;
+        renderProfileModule();
+    });
+    document.getElementById("profileResetBtn").addEventListener("click", () => {
+        state.profileSearch = "";
+        state.profileTypeFilter = "";
+        state.profileRoomFilter = "";
+        state.profileModeFilter = "";
+        state.profilePage = 1;
+        renderProfileModule();
+    });
+
+    // Row click / view / edit
+    moduleContainer.querySelectorAll("[data-select-profile]").forEach(row => {
+        row.addEventListener("click", e => {
+            if (e.target.closest("button")) return;
+            state.selectedProfileId = row.dataset.selectProfile;
+            renderProfileModule();
+        });
+    });
+    moduleContainer.querySelectorAll("[data-view-profile]").forEach(btn => {
+        btn.addEventListener("click", () => {
+            state.selectedProfileId = btn.dataset.viewProfile;
+            renderProfileModule();
+        });
+    });
+    moduleContainer.querySelectorAll("[data-edit-profile]").forEach(btn => {
+        btn.addEventListener("click", () => {
+            state.editProfileId = btn.dataset.editProfile;
+            switchModule("profile", "update");
+        });
+    });
+    moduleContainer.querySelectorAll("[data-mobile-profile]").forEach(card => {
+        card.addEventListener("click", () => {
+            state.selectedProfileId = card.dataset.mobileProfile;
+            state.profileMobileDetailOpen = true;
+            renderProfileModule();
+        });
+    });
+
+    // Profile detail tabs & document preview buttons
+    bindProfileDetailInteractions(selectedProfile);
+
+    // Pagination
+    buildPaginationButtons(
+        document.getElementById("profilePagination"),
+        state.profilePage,
+        totalPages,
+        page => { state.profilePage = page; renderProfileModule(); }
+    );
 }
 
-function renderProfileDetails() {
-    const panel = document.getElementById("profileDetails");
-    if (!panel) return;
-    const p = getMonthData().profiles.find(x => x.id === state.selectedProfileId) || getMonthData().profiles[0];
-    if (!p) { panel.innerHTML = `<div class="empty-state">No profile details for ${escapeHtml(selectedMonth)}.</div>`; return; }
-    panel.innerHTML = `<div class="panel-heading"><h2><i class="bi bi-person-circle"></i> Profile Details</h2><button class="close-detail" id="closeProfileDetail" type="button"><i class="bi bi-x-lg"></i></button></div><div class="profile-card-head"><div class="profile-avatar"><i class="bi bi-person-fill"></i></div><div><h3>${escapeHtml(p.fullName)} <span class="type-pill ${p.type.toLowerCase()}">${escapeHtml(p.type)}</span></h3><div><i class="bi bi-envelope"></i> ${escapeHtml(p.email)}</div><div><i class="bi bi-telephone"></i> ${escapeHtml(p.mobile)}</div></div></div><div class="detail-tabs"><button class="active" type="button">Personal Info</button><button type="button" data-detail-tab="booking">Booking & Payment</button><button type="button" data-detail-tab="documents">Documents</button><button type="button" data-detail-tab="work">Work Info</button></div><div id="profileDetailBody">${profilePersonalInfo(p)}</div>`;
-    document.getElementById("closeProfileDetail").addEventListener("click", () => { panel.classList.add("collapsed"); });
-    panel.querySelectorAll(".detail-tabs button").forEach(btn => btn.addEventListener("click", () => { panel.querySelectorAll(".detail-tabs button").forEach(b => b.classList.remove("active")); btn.classList.add("active"); document.getElementById("profileDetailBody").innerHTML = btn.dataset.detailTab === "booking" ? profileBookingInfo(p) : btn.dataset.detailTab === "documents" ? profileDocuments(p) : btn.dataset.detailTab === "work" ? profileWorkInfo(p) : profilePersonalInfo(p); }));
+function buildProfileDetailPanelHtml(p) {
+    const tab = state.profileDetailTab;
+    let tabBody = "";
+
+    if (tab === "personal") {
+        tabBody = `
+            <div class="detail-list">
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-clock"></i> Timestamp</span><span class="detail-val">${escapeHtml(p.timestamp)}</span></div>
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-envelope"></i> Email Address</span><span class="detail-val">${escapeHtml(p.email)}</span></div>
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-person-badge"></i> Type</span><span class="detail-val">${escapeHtml(p.userType)}</span></div>
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-person"></i> Full Name</span><span class="detail-val">${escapeHtml(p.fullName)}</span></div>
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-phone"></i> Mobile Number</span><span class="detail-val">${escapeHtml(p.mobileNumber)}</span></div>
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-mortarboard"></i> College / University</span><span class="detail-val">${escapeHtml(p.collegeName || "—")}</span></div>
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-book"></i> Course / Program</span><span class="detail-val">${escapeHtml(p.courseProgram || "—")}</span></div>
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-calendar"></i> Which Year</span><span class="detail-val">${escapeHtml(p.whichYear || "—")}</span></div>
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-people"></i> Father / Guardian</span><span class="detail-val">${escapeHtml(p.guardianName || "—")}</span></div>
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-telephone"></i> Guardian Mobile</span><span class="detail-val">${escapeHtml(p.guardianMobile || "—")}</span></div>
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-geo-alt"></i> Home Address</span><span class="detail-val">${escapeHtml(p.homeAddress || "—")}</span></div>
+            </div>
+        `;
+    } else if (tab === "booking") {
+        tabBody = `
+            <div class="detail-list">
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-calendar-event"></i> Booking Date</span><span class="detail-val">${escapeHtml(p.bookingDate || "—")}</span></div>
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-calendar-check"></i> Shifting Date</span><span class="detail-val">${escapeHtml(p.shiftingDate || "—")}</span></div>
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-door-open"></i> Room Number</span><span class="detail-val">${escapeHtml(p.roomNumber || "—")}</span></div>
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-house"></i> Room Type</span><span class="detail-val">${escapeHtml(p.roomType || "—")}</span></div>
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-cash"></i> Booking Amount</span><span class="detail-val">${formatINR(p.bookingAmount)}</span></div>
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-receipt"></i> Registration Fee</span><span class="detail-val">${formatINR(p.registrationFee)}</span></div>
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-currency-rupee"></i> Monthly Rent</span><span class="detail-val">${formatINR(p.monthlyRent)}</span></div>
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-shield-check"></i> Security Deposit</span><span class="detail-val">${formatINR(p.securityDeposit)}</span></div>
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-credit-card"></i> Payment Mode</span><span class="detail-val">${escapeHtml(p.paymentMode || "—")}</span></div>
+                <div class="detail-row">
+                    <span class="detail-label"><i class="bi bi-file-earmark-text"></i> Payment Receipt</span>
+                    <span class="detail-val">
+                        <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" data-preview-doc="Payment Receipt" data-doc-file="${escapeHtml(p.paymentReceipt || "receipt.pdf")}">
+                            <i class="bi bi-eye me-1"></i>${escapeHtml(p.paymentReceipt || "View")}
+                        </button>
+                    </span>
+                </div>
+            </div>
+        `;
+    } else if (tab === "documents") {
+        tabBody = `
+            <div class="doc-grid">
+                <div class="doc-card" data-preview-doc="Aadhaar Card – Front" data-doc-file="${escapeHtml(p.aadhaarFront || "aadhaar_front.jpg")}">
+                    <div class="doc-thumb"><i class="bi bi-card-heading"></i></div>
+                    <div class="doc-name">Aadhaar (Front)</div>
+                    <div class="small text-primary mt-1"><i class="bi bi-eye"></i> Preview</div>
+                </div>
+                <div class="doc-card" data-preview-doc="Aadhaar Card – Back" data-doc-file="${escapeHtml(p.aadhaarBack || "aadhaar_back.jpg")}">
+                    <div class="doc-thumb"><i class="bi bi-card-text"></i></div>
+                    <div class="doc-name">Aadhaar (Back)</div>
+                    <div class="small text-primary mt-1"><i class="bi bi-eye"></i> Preview</div>
+                </div>
+                <div class="doc-card" data-preview-doc="Your ID" data-doc-file="${escapeHtml(p.yourId || "id_card.jpg")}">
+                    <div class="doc-thumb"><i class="bi bi-person-vcard"></i></div>
+                    <div class="doc-name">Your ID</div>
+                    <div class="small text-primary mt-1"><i class="bi bi-eye"></i> Preview</div>
+                </div>
+            </div>
+        `;
+    } else {
+        tabBody = `
+            <div class="detail-list">
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-person"></i> Full Name</span><span class="detail-val">${escapeHtml(p.employeeFullName || (p.userType === "Employee" ? p.fullName : "—"))}</span></div>
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-phone"></i> Mobile Number</span><span class="detail-val">${escapeHtml(p.employeeMobile || (p.userType === "Employee" ? p.mobileNumber : "—"))}</span></div>
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-building"></i> Company Name</span><span class="detail-val">${escapeHtml(p.companyName || "—")}</span></div>
+                <div class="detail-row"><span class="detail-label"><i class="bi bi-geo-alt"></i> Company Address</span><span class="detail-val">${escapeHtml(p.companyAddress || "—")}</span></div>
+            </div>
+        `;
+    }
+
+    return `
+        <div class="panel-header">
+            <h3 class="panel-title"><i class="bi bi-person-lines-fill"></i> Profile Details</h3>
+            <button type="button" class="btn btn-sm btn-outline-primary rounded-3" data-edit-profile-detail="${escapeHtml(p.id)}">
+                <i class="bi bi-pencil me-1"></i>Edit
+            </button>
+        </div>
+        <div class="d-flex align-items-center gap-3 mb-2">
+            <div class="profile-avatar">${escapeHtml(getInitials(p.fullName))}</div>
+            <div class="min-w-0">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <strong class="fs-6 text-dark">${escapeHtml(p.fullName)}</strong>
+                    <span class="badge-soft ${p.userType === "Student" ? "badge-student" : "badge-employee"}">${escapeHtml(p.userType)}</span>
+                </div>
+                <div class="small text-muted text-truncate"><i class="bi bi-envelope me-1"></i>${escapeHtml(p.email)}</div>
+                <div class="small text-muted"><i class="bi bi-telephone me-1"></i>${escapeHtml(p.mobileNumber)}</div>
+            </div>
+        </div>
+        <div class="profile-tabs">
+            <button type="button" class="profile-tab-btn ${tab === "personal" ? "active" : ""}" data-ptab="personal"><i class="bi bi-person"></i> Personal Info</button>
+            <button type="button" class="profile-tab-btn ${tab === "booking" ? "active" : ""}" data-ptab="booking"><i class="bi bi-house-check"></i> Booking &amp; Payment</button>
+            <button type="button" class="profile-tab-btn ${tab === "documents" ? "active" : ""}" data-ptab="documents"><i class="bi bi-file-earmark-check"></i> Documents</button>
+            <button type="button" class="profile-tab-btn ${tab === "work" ? "active" : ""}" data-ptab="work"><i class="bi bi-briefcase"></i> Work Info</button>
+        </div>
+        ${tabBody}
+    `;
 }
 
-function detailTable(items) { return `<div class="detail-table">${items.map(([a,b]) => `<div><b>${a}</b><span>${escapeHtml(b)}</span></div>`).join("")}</div>`; }
-function profilePersonalInfo(p) { return detailTable([["Timestamp",p.timestamp],["Email Address",p.email],["Type",p.type],["Full Name",p.fullName],["Mobile Number",p.mobile],["College/University",p.college || "-"],["Course / Program",p.course || "-"],["Which Year",p.year || "-"],["Father / Guardian Name",p.guardian],["Parent / Guardian Mobile",p.guardianMobile],["Home Address",p.address]]); }
-function profileBookingInfo(p) { return detailTable([["Booking Date",p.bookingDate],["Shifting Date",p.shiftingDate],["Room Number",p.room],["Room Type",p.roomType],["Booking Amount",money(p.bookingAmount)],["Registration Fee",money(p.registrationFee)],["Monthly Rent",money(p.rent)],["Security Deposit",money(p.deposit)],["Payment Mode",p.paymentMode],["Payment Receipt",p.receipt]]); }
-function profileDocuments(p) { return `<div class="document-grid">${[p.aadhaarFront,p.aadhaarBack,p.yourId].map((name,i)=>`<button type="button" class="document-card" data-doc="${escapeHtml(name)}"><div class="document-placeholder"><i class="bi bi-card-image"></i></div><span>${["Aadhaar (Front)","Aadhaar (Back)","Your ID"][i]}</span><small>View document</small></button>`).join("")}</div>`; }
-function profileWorkInfo(p) { return detailTable([["Full Name",p.fullName],["Mobile Number",p.mobile],["Company Name",p.companyName || "-"],["Company Address",p.companyAddress || "-"]]); }
+function renderMobileProfileDetail(p) {
+    moduleContainer.innerHTML = `
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <button type="button" class="btn btn-light border rounded-3 fw-semibold" id="mobileProfileBackBtn">
+                <i class="bi bi-arrow-left me-1"></i>Profile Details
+            </button>
+            <button type="button" class="btn btn-primary btn-sm rounded-3" data-edit-profile-detail="${escapeHtml(p.id)}">
+                <i class="bi bi-pencil me-1"></i>Edit
+            </button>
+        </div>
 
-function renderPayment() {
-    if (state.paymentView === "add") return renderSimpleForm("Add Payment", "bi-credit-card", "Add a payment record using the payment fields defined for this module.", "payment");
-    const payments = getMonthData().payments;
-    const paid = getPaymentTotal();
-    const pending = getPaymentPending();
-    const title = state.paymentView === "pending" ? "Pending Payments" : state.paymentView === "history" ? "Payment History" : "Payment Management";
-    moduleContent.innerHTML = `${pageHeader("bi-credit-card", title, "Track and manage all rent, booking and other payments.")}<section class="stats-grid">${statCard("bi-wallet2", "Total Payments", money(paid + pending), "highlight")}${statCard("bi-check-circle-fill", "Paid", money(paid), "success")}${statCard("bi-clock-history", "Pending", money(pending), "danger")}${statCard("bi-people-fill", "Total Records", payments.length)}${monthCard()}</section><section class="filter-panel app-panel"><div class="filter-controls payment-filters"><div class="search-wrap"><i class="bi bi-search"></i><input id="paymentSearch" type="search" placeholder="Search by name, mobile, email or room no..."></div><select id="paymentAmount"><option value="">All Amount Type</option><option>Monthly Rent</option><option>Booking Amount</option><option>Registration Fee</option><option>Security Deposit</option></select><select id="paymentMode"><option value="">All Payment Mode</option><option>UPI</option><option>Online</option><option>Cash</option></select><select id="paymentStatus"><option value="">All Status</option><option>Paid</option><option>Pending</option></select><button class="reset-button" id="paymentReset"><i class="bi bi-arrow-counterclockwise"></i> Reset</button></div></section><section class="app-panel table-panel"><div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Timestamp</th><th>Full Name</th><th>Room No.</th><th>Room Type</th><th>Fee Month</th><th>Amount Type</th><th>Amount Paid</th><th>Mode</th><th>Status</th><th>Receipt</th></tr></thead><tbody id="paymentTable"></tbody></table></div><div class="table-footer"><span id="paymentSummary"></span><div id="paymentPagination" class="pagination"></div></div></section><section class="two-column-panels"><section class="app-panel"><div class="panel-heading"><h2><i class="bi bi-bar-chart"></i> Amount Type Summary (${escapeHtml(selectedMonth)})</h2></div>${paymentTypeSummary(payments)}</section><section class="app-panel"><div class="panel-heading"><h2><i class="bi bi-pie-chart"></i> Payment Status (${escapeHtml(selectedMonth)})</h2></div>${paymentStatusChart(paid,pending)}</section></section>`;
-    bindPaymentFilters();
-    renderPaymentTable();
+        <div class="panel-card mb-3">
+            <div class="d-flex align-items-center gap-3">
+                <div class="profile-avatar">${escapeHtml(getInitials(p.fullName))}</div>
+                <div class="flex-grow-1 min-w-0">
+                    <div class="fw-bold fs-6">${escapeHtml(p.fullName)}</div>
+                    <div class="small text-muted text-truncate"><i class="bi bi-envelope me-1"></i>${escapeHtml(p.email)}</div>
+                    <div class="small text-muted"><i class="bi bi-telephone me-1"></i>${escapeHtml(p.mobileNumber)}</div>
+                </div>
+                <div class="d-flex flex-column align-items-end gap-1">
+                    <span class="badge-soft ${p.userType === "Student" ? "badge-student" : "badge-employee"}">${escapeHtml(p.userType)}</span>
+                    <span class="badge-soft badge-room">${escapeHtml(p.roomNumber)}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="accordion" id="mobileProfileAcc">
+            <div class="accordion-item rounded-4 overflow-hidden mb-2 border">
+                <h2 class="accordion-header">
+                    <button class="accordion-button fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#mpPersonal">
+                        <i class="bi bi-person-fill text-primary me-2"></i>Personal Information
+                    </button>
+                </h2>
+                <div id="mpPersonal" class="accordion-collapse collapse show">
+                    <div class="accordion-body">
+                        <div class="detail-list">
+                            <div class="detail-row"><span class="detail-label">Timestamp</span><span class="detail-val">${escapeHtml(p.timestamp)}</span></div>
+                            <div class="detail-row"><span class="detail-label">Full Name</span><span class="detail-val">${escapeHtml(p.fullName)}</span></div>
+                            <div class="detail-row"><span class="detail-label">Student / Employee</span><span class="detail-val">${escapeHtml(p.userType)}</span></div>
+                            <div class="detail-row"><span class="detail-label">College / University</span><span class="detail-val">${escapeHtml(p.collegeName || "—")}</span></div>
+                            <div class="detail-row"><span class="detail-label">Course / Program</span><span class="detail-val">${escapeHtml(p.courseProgram || "—")}</span></div>
+                            <div class="detail-row"><span class="detail-label">Which Year</span><span class="detail-val">${escapeHtml(p.whichYear || "—")}</span></div>
+                            <div class="detail-row"><span class="detail-label">Father / Guardian</span><span class="detail-val">${escapeHtml(p.guardianName || "—")}</span></div>
+                            <div class="detail-row"><span class="detail-label">Guardian Mobile</span><span class="detail-val">${escapeHtml(p.guardianMobile || "—")}</span></div>
+                            <div class="detail-row"><span class="detail-label">Home Address</span><span class="detail-val">${escapeHtml(p.homeAddress || "—")}</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-item rounded-4 overflow-hidden mb-2 border">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#mpBooking">
+                        <i class="bi bi-house-door-fill text-primary me-2"></i>Booking &amp; Stay Details
+                    </button>
+                </h2>
+                <div id="mpBooking" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <div class="detail-list">
+                            <div class="detail-row"><span class="detail-label">Booking Date</span><span class="detail-val">${escapeHtml(p.bookingDate || "—")}</span></div>
+                            <div class="detail-row"><span class="detail-label">Shifting Date</span><span class="detail-val">${escapeHtml(p.shiftingDate || "—")}</span></div>
+                            <div class="detail-row"><span class="detail-label">Room Number</span><span class="detail-val">${escapeHtml(p.roomNumber || "—")}</span></div>
+                            <div class="detail-row"><span class="detail-label">Room Type</span><span class="detail-val">${escapeHtml(p.roomType || "—")}</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-item rounded-4 overflow-hidden mb-2 border">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#mpPayment">
+                        <i class="bi bi-credit-card-fill text-primary me-2"></i>Payment Details
+                    </button>
+                </h2>
+                <div id="mpPayment" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <div class="detail-list">
+                            <div class="detail-row"><span class="detail-label">Booking Amount</span><span class="detail-val">${formatINR(p.bookingAmount)}</span></div>
+                            <div class="detail-row"><span class="detail-label">Registration Fee</span><span class="detail-val">${formatINR(p.registrationFee)}</span></div>
+                            <div class="detail-row"><span class="detail-label">Monthly Rent</span><span class="detail-val">${formatINR(p.monthlyRent)}</span></div>
+                            <div class="detail-row"><span class="detail-label">Security Deposit</span><span class="detail-val">${formatINR(p.securityDeposit)}</span></div>
+                            <div class="detail-row"><span class="detail-label">Payment Mode</span><span class="detail-val">${escapeHtml(p.paymentMode || "—")}</span></div>
+                            <div class="detail-row">
+                                <span class="detail-label">Payment Receipt</span>
+                                <span class="detail-val">
+                                    <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" data-preview-doc="Payment Receipt" data-doc-file="${escapeHtml(p.paymentReceipt || "receipt.pdf")}">
+                                        ${escapeHtml(p.paymentReceipt || "View")}
+                                    </button>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-item rounded-4 overflow-hidden mb-2 border">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#mpDocs">
+                        <i class="bi bi-file-earmark-check-fill text-primary me-2"></i>Documents
+                    </button>
+                </h2>
+                <div id="mpDocs" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <div class="doc-grid">
+                            <div class="doc-card" data-preview-doc="Aadhaar Card – Front" data-doc-file="${escapeHtml(p.aadhaarFront || "aadhaar_front.jpg")}">
+                                <div class="doc-thumb"><i class="bi bi-card-heading"></i></div>
+                                <div class="doc-name">Aadhaar (Front)</div>
+                            </div>
+                            <div class="doc-card" data-preview-doc="Aadhaar Card – Back" data-doc-file="${escapeHtml(p.aadhaarBack || "aadhaar_back.jpg")}">
+                                <div class="doc-thumb"><i class="bi bi-card-text"></i></div>
+                                <div class="doc-name">Aadhaar (Back)</div>
+                            </div>
+                            <div class="doc-card" data-preview-doc="Your ID" data-doc-file="${escapeHtml(p.yourId || "id_card.jpg")}">
+                                <div class="doc-thumb"><i class="bi bi-person-vcard"></i></div>
+                                <div class="doc-name">Your ID</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-item rounded-4 overflow-hidden border">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#mpWork">
+                        <i class="bi bi-briefcase-fill text-primary me-2"></i>(For Employees Only)
+                    </button>
+                </h2>
+                <div id="mpWork" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <div class="detail-list">
+                            <div class="detail-row"><span class="detail-label">Full Name</span><span class="detail-val">${escapeHtml(p.employeeFullName || (p.userType === "Employee" ? p.fullName : "—"))}</span></div>
+                            <div class="detail-row"><span class="detail-label">Mobile Number</span><span class="detail-val">${escapeHtml(p.employeeMobile || (p.userType === "Employee" ? p.mobileNumber : "—"))}</span></div>
+                            <div class="detail-row"><span class="detail-label">Company Name</span><span class="detail-val">${escapeHtml(p.companyName || "—")}</span></div>
+                            <div class="detail-row"><span class="detail-label">Company Address</span><span class="detail-val">${escapeHtml(p.companyAddress || "—")}</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.getElementById("mobileProfileBackBtn").addEventListener("click", () => {
+        state.profileMobileDetailOpen = false;
+        renderProfileModule();
+    });
+    bindProfileDetailInteractions(p);
 }
 
-function bindPaymentFilters() { ["paymentSearch","paymentAmount","paymentMode","paymentStatus"].forEach(id => document.getElementById(id).addEventListener("input", () => { state.paymentPage = 1; renderPaymentTable(); })); document.getElementById("paymentReset").addEventListener("click", () => { ["paymentSearch","paymentAmount","paymentMode","paymentStatus"].forEach(id => document.getElementById(id).value = ""); state.paymentPage = 1; renderPaymentTable(); }); }
-function getFilteredPayments() { const q = document.getElementById("paymentSearch")?.value.trim().toLowerCase() || ""; const amount = document.getElementById("paymentAmount")?.value || ""; const mode = document.getElementById("paymentMode")?.value || ""; const status = document.getElementById("paymentStatus")?.value || ""; let rows = getMonthData().payments.filter(p => (!q || [p.fullName,p.mobile,p.email,p.room].some(v=>String(v).toLowerCase().includes(q))) && (!amount || p.amountType === amount) && (!mode || p.mode === mode) && (!status || p.status === status)); if (state.paymentView === "pending") rows = rows.filter(p=>p.status === "Pending"); return rows; }
-function renderPaymentTable() { const rows=getFilteredPayments(); const pages=Math.max(1,Math.ceil(rows.length/PAGE_SIZE)); state.paymentPage=Math.min(state.paymentPage,pages); const start=(state.paymentPage-1)*PAGE_SIZE; const slice=rows.slice(start,start+PAGE_SIZE); const tbody=document.getElementById("paymentTable"); if(!tbody)return; tbody.innerHTML=slice.length?slice.map((p,i)=>`<tr><td>${start+i+1}</td><td>${escapeHtml(p.timestamp)}</td><td><strong>${escapeHtml(p.fullName)}</strong></td><td>${escapeHtml(p.room)}</td><td>${escapeHtml(p.roomType)}</td><td>${escapeHtml(p.feeMonth)}</td><td>${escapeHtml(p.amountType)}</td><td><strong>${money(p.amountPaid)}</strong></td><td>${escapeHtml(p.mode)}</td><td><span class="status-pill ${p.status.toLowerCase()}">${p.status}</span></td><td><button class="table-icon-btn receipt-btn" data-id="${p.id}" title="View receipt"><i class="bi bi-image"></i></button></td></tr>`).join(""): `<tr><td colspan="11" class="empty-row">No payment records found for this month.</td></tr>`; tbody.querySelectorAll(".receipt-btn").forEach(btn=>btn.addEventListener("click",()=>showModal("Payment Receipt",`<div class="receipt-preview"><i class="bi bi-file-earmark-pdf"></i><h4>${escapeHtml(getMonthData().payments.find(p=>p.id===btn.dataset.id)?.receipt || "Receipt")}</h4><p>Frontend demo receipt preview.</p></div>`))); document.getElementById("paymentSummary").textContent=`Showing ${rows.length?start+1:0} – ${Math.min(start+PAGE_SIZE,rows.length)} of ${rows.length} records`; renderPagination(document.getElementById("paymentPagination"),pages,state.paymentPage,p=>{state.paymentPage=p;renderPaymentTable();}); }
-function paymentTypeSummary(rows) { const types=["Monthly Rent","Booking Amount","Registration Fee","Security Deposit"]; const totals=types.map(type=>[type,rows.filter(p=>p.amountType===type).reduce((s,p)=>s+p.amountPaid,0)]); const max=Math.max(1,...totals.map(x=>x[1])); return `<div class="progress-summary">${totals.map(([label,value])=>`<div class="progress-row"><span>${label}</span><div class="progress"><div class="progress-bar" style="width:${value/max*100}%"></div></div><b>${money(value)}</b></div>`).join("")}</div>`; }
-function paymentStatusChart(paid,pending) { const total=paid+pending; const pct=total?Math.round(paid/total*100):0; return `<div class="donut-large" style="--paid:${pct}%"><div><strong>${money(total)}</strong><span>Total</span></div></div><div class="chart-legend"><span><i class="legend-dot paid"></i>Paid : ${money(paid)} (${pct}%)</span><span><i class="legend-dot pending"></i>Pending : ${money(pending)} (${100-pct}%)</span></div>`; }
+function bindProfileDetailInteractions(profile) {
+    moduleContainer.querySelectorAll("[data-ptab]").forEach(btn => {
+        btn.addEventListener("click", () => {
+            state.profileDetailTab = btn.dataset.ptab;
+            renderProfileModule();
+        });
+    });
 
-function renderExpense() {
-    if (state.expenseView === "add") return renderSimpleForm("Add Expense", "bi-plus-circle", "Add an expense using the selected frequency structure.", "expense");
-    const monthly=getMonthlyExpenseTotal(), weekly=getWeeklyExpenseTotal(), daily=getDailyExpenseTotal(), other=getOtherBillsTotal(), total=monthly+weekly+daily+other;
-    const title = state.expenseView === "monthly" ? "Monthly Expense" : state.expenseView === "weekly" ? "Weekly Expense" : state.expenseView === "daily" ? "Daily Expense (Avg)" : state.expenseView === "history" ? "Expense History" : "Expense Management";
-    moduleContent.innerHTML=`${pageHeader("bi-coin",title,"Track and manage all property/hostel expenses (Monthly, Weekly, Daily & Other Bills).")}<section class="stats-grid">${statCard("bi-coin", "Total Expense", money(total), "highlight")}${statCard("bi-calendar3", "Monthly Expense", money(monthly))}${statCard("bi-calendar-week", "Weekly Expense", money(weekly))}${statCard("bi-calendar-day", "Daily Expense (Avg)", money(daily))}${monthCard()}</section><section class="filter-panel app-panel"><div class="filter-controls expense-filters"><div class="search-wrap"><i class="bi bi-search"></i><input id="expenseSearch" type="search" placeholder="Search by expense head, category or note..."></div><select id="expenseCategory"><option value="">All Category</option><option>Monthly</option><option>Weekly</option><option>Daily Average</option><option>Other Bills</option></select><select id="expenseFrequency"><option value="">All Frequency</option><option>Monthly</option><option>Weekly</option><option>Daily Average</option></select><button class="reset-button" id="expenseReset"><i class="bi bi-arrow-counterclockwise"></i> Reset</button></div></section><div class="expense-tabs">${[["overview","Overview"],["monthly","Monthly Expenses"],["weekly","Weekly Expenses"],["daily","Daily Expenses"],["other","Other Bills"]].map(([v,l])=>`<button type="button" data-expense-tab="${v}" class="${(state.expenseView===v||(state.expenseView==='overview'&&v==='overview'))?'active':''}"><i class="bi bi-calendar3"></i>${l}</button>`).join("")}</div><div id="expenseMain"></div>`;
-    bindExpenseFilters();
-    document.querySelectorAll("[data-expense-tab]").forEach(btn=>btn.addEventListener("click",()=>{state.expenseView=btn.dataset.expenseTab;renderExpense();}));
-    renderExpenseMain(total,monthly,weekly,daily,other);
-}
-function bindExpenseFilters(){["expenseSearch","expenseCategory","expenseFrequency"].forEach(id=>document.getElementById(id).addEventListener("input",()=>renderExpenseMain(getTotalExpense(),getMonthlyExpenseTotal(),getWeeklyExpenseTotal(),getDailyExpenseTotal(),getOtherBillsTotal()))); document.getElementById("expenseReset").addEventListener("click",()=>{document.getElementById("expenseSearch").value="";document.getElementById("expenseCategory").value="";document.getElementById("expenseFrequency").value="";renderExpenseMain(getTotalExpense(),getMonthlyExpenseTotal(),getWeeklyExpenseTotal(),getDailyExpenseTotal(),getOtherBillsTotal());});}
-function renderExpenseMain(total,monthly,weekly,daily,other){ const target=document.getElementById("expenseMain"); if(!target)return; const forced=(document.getElementById("expenseCategory")?.value||document.getElementById("expenseFrequency")?.value||"").toLowerCase(); if(state.expenseView==='monthly'||forced==='monthly'){target.innerHTML=monthlyExpenseTable();return;} if(state.expenseView==='weekly'||forced==='weekly'){target.innerHTML=weeklyExpenseTable();return;} if(state.expenseView==='daily'||forced==='daily average'){target.innerHTML=dailyExpensePanel();return;} if(state.expenseView==='other'||forced==='other bills'){target.innerHTML=otherBillsTable();return;} target.innerHTML=`<div class="expense-overview-grid"><section class="app-panel"><div class="panel-heading"><h2><i class="bi bi-calendar3"></i> Monthly Expenses (${escapeHtml(selectedMonth)})</h2><span class="panel-total">Total: ${money(monthly)}</span></div>${monthlyExpenseTable(true)}</section><section class="app-panel"><div class="panel-heading"><h2><i class="bi bi-calendar-week"></i> Weekly Expenses (${escapeHtml(selectedMonth)})</h2><span class="panel-total">Total: ${money(weekly)}</span></div>${weeklyExpenseTable(true)}</section><section class="app-panel"><div class="panel-heading"><h2><i class="bi bi-calendar-day"></i> Daily Expenses (${escapeHtml(selectedMonth)})</h2><span class="panel-total">Total: ${money(daily)}</span></div>${dailyExpensePanel(true)}</section><section class="app-panel"><div class="panel-heading"><h2><i class="bi bi-file-earmark-text"></i> Other Bills</h2><span class="panel-total">Total: ${money(other)}</span></div>${otherBillsTable(true)}</section></div><section class="app-panel month-summary-table"><div class="panel-heading"><h2><i class="bi bi-bar-chart"></i> Month-wise Expense Summary</h2></div>${monthExpenseSummary()}</section>`; }
-function expenseMatches(record, keys){ const q=(document.getElementById("expenseSearch")?.value||"").trim().toLowerCase(); if(!q) return true; return keys.some(k=>String(record[k]??"").toLowerCase().includes(q)); }
-function monthlyExpenseTable(compact=false){ const r=getMonthData().expenses.monthly.filter(x=>expenseMatches(x,["yourName","propertyRent","electricity","water","internet","workerSalary","ration","gas","cleaning","furniture","security","license","foodService","other"])); if(!r.length)return `<div class="empty-state">No monthly expense data.</div>`; return `<div class="table-scroll"><table class="data-table expense-table"><thead><tr><th>#</th><th>Your Name</th><th>Property Rent</th><th>Electricity</th><th>Water</th><th>Internet / Wi-Fi</th><th>Worker Salary</th><th>Ration</th><th>LPG / Gas</th><th>Cleaning</th><th>Furniture / Equip.</th><th>CCTV / Security</th><th>License Fees</th><th>Food Service</th><th>Misc. / Other</th><th>Receipt</th></tr></thead><tbody>${r.map((x,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(x.yourName)}</td>${[x.propertyRent,x.electricity,x.water,x.internet,x.workerSalary,x.ration,x.gas,x.cleaning,x.furniture,x.security,x.license,x.foodService,x.other].map(v=>`<td>${money(v)}</td>`).join("")}<td><button class="table-icon-btn" data-receipt="${escapeHtml(x.receipt)}"><i class="bi bi-image"></i></button></td></tr>`).join("")}</tbody><tfoot><tr><th colspan="15">Total Monthly Expense</th><th>${money(getMonthlyExpenseTotal())}</th></tr></tfoot></table></div>`; }
-function weeklyExpenseTable(compact=false){ const r=getMonthData().expenses.weekly.filter(x=>expenseMatches(x,["yourName","week","dateRange","vegetables","grocery","cleaning","transport","other"])); if(!r.length)return `<div class="empty-state">No weekly expense data.</div>`; return `<div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Your Name</th><th>Week</th><th>Date Range</th><th>Vegetables</th><th>Grocery</th><th>Cleaning Material</th><th>Transportation / Delivery</th><th>Other Expense</th><th>Total</th><th>Receipt</th></tr></thead><tbody>${r.map((x,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(x.yourName)}</td><td>${x.week}</td><td>${x.dateRange}</td>${[x.vegetables,x.grocery,x.cleaning,x.transport,x.other].map(v=>`<td>${money(v)}</td>`).join("")}<td><strong>${money(totalExpenseRecord(x))}</strong></td><td><button class="table-icon-btn" data-receipt="${escapeHtml(x.receipt)}"><i class="bi bi-image"></i></button></td></tr>`).join("")}</tbody><tfoot><tr><th colspan="9">Total Weekly Expense</th><th>${money(getWeeklyExpenseTotal())}</th><th></th></tr></tfoot></table></div>`; }
-function dailyExpensePanel(compact=false){ const r=getMonthData().expenses.dailyAverage.filter(x=>expenseMatches(x,["yourName","petrol","milk","freshVegetables","repair","labour","cleaning","other"])); if(!r.length)return `<div class="empty-state">No daily average expense data.</div>`; const x=r[0]; return `<div class="daily-average-card"><div><i class="bi bi-calendar-day"></i><span>Average Daily Expense</span><strong>${money(totalExpenseRecord(x))}</strong></div><div><i class="bi bi-info-circle"></i><p>This is the average daily expense data for ${escapeHtml(selectedMonth)}.</p></div></div><div class="table-scroll mt-3"><table class="data-table"><thead><tr><th>Your Name</th><th>Petrol</th><th>Milk</th><th>Fresh Vegetables</th><th>Small Repair / Hardware</th><th>Daily Labour</th><th>Cleaning / Consumables</th><th>Other Expense</th><th>Receipt</th></tr></thead><tbody><tr><td>${escapeHtml(x.yourName)}</td>${[x.petrol,x.milk,x.freshVegetables,x.repair,x.labour,x.cleaning,x.other].map(v=>`<td>${money(v)}</td>`).join("")}<td><button class="table-icon-btn" data-receipt="${escapeHtml(x.receipt)}"><i class="bi bi-image"></i></button></td></tr></tbody></table></div>`; }
-function otherBillsTable(compact=false){ const r=getMonthData().expenses.otherBills.filter(x=>expenseMatches(x,["head","amount"])); return `<div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Expense Head</th><th>Amount (₹)</th><th>Receipt</th></tr></thead><tbody>${r.map((x,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(x.head)}</td><td>${money(x.amount)}</td><td>${x.receipt?`<button class="table-icon-btn" data-receipt="${escapeHtml(x.receipt)}"><i class="bi bi-image"></i></button>`:"-"}</td></tr>`).join("")}</tbody><tfoot><tr><th colspan="2">Total Other Bills</th><th>${money(getOtherBillsTotal())}</th><th></th></tr></tfoot></table></div>`; }
-function monthExpenseSummary(){ const current=getTotalExpense(); const next=monthlyData["January 2027"]?getMonthTotals("January 2027"):0; return `<div class="table-scroll"><table class="data-table"><thead><tr><th>Month</th><th>Monthly Expense (₹)</th><th>Weekly Expense (₹)</th><th>Daily Expense (₹)</th><th>Other Bills (₹)</th><th>Total Expense (₹)</th></tr></thead><tbody><tr><td>${escapeHtml(selectedMonth)}</td><td>${money(getMonthlyExpenseTotal())}</td><td>${money(getWeeklyExpenseTotal())}</td><td>${money(getDailyExpenseTotal())}</td><td>${money(getOtherBillsTotal())}</td><td><strong>${money(current)}</strong></td></tr><tr><td>January 2027</td><td>${money(monthlyData["January 2027"].expenses.monthly.length ? getMonthTotals("January 2027").monthly : 0)}</td><td>${money(getMonthTotals("January 2027").weekly)}</td><td>${money(getMonthTotals("January 2027").daily)}</td><td>${money(getMonthTotals("January 2027").other)}</td><td><strong>${money(next)}</strong></td></tr></tbody></table></div>`; }
-function getMonthTotals(month){ const e=monthlyData[month].expenses; const sum=(arr,key)=>arr.reduce((s,r)=>s+(key?Number(r[key]||0):totalExpenseRecord(r)),0); return {monthly:sum(e.monthly),weekly:sum(e.weekly),daily:sum(e.dailyAverage),other:sum(e.otherBills,"amount"),total:sum(e.monthly)+sum(e.weekly)+sum(e.dailyAverage)+sum(e.otherBills,"amount")}; }
+    moduleContainer.querySelectorAll("[data-edit-profile-detail]").forEach(btn => {
+        btn.addEventListener("click", () => {
+            state.editProfileId = btn.dataset.editProfileDetail;
+            switchModule("profile", "update");
+        });
+    });
 
-function renderMore(){
-    if(state.moreView==='beds') return renderBeds();
-    if(state.moreView==='visitors') return renderVisitors();
-    if(state.moreView !== 'more') return renderMoreOption(state.moreView);
-    const cards=[
-        ["reports","Reports","bi-bar-chart","View & download reports (PDF/Excel)"],["rooms","Room Management","bi-bed","Manage rooms, room types and occupancy"],["visitors","Visitor Enquiries","bi-people","View all visitor enquiries and enquiry status"],["beds","Beds Details","bi-bed-fill","View total beds, occupied/empty beds, floor-wise, room-wise & month-wise data","New"],["notice","Notice & Updates","bi-megaphone","Create and manage notices"],["documents","Documents","bi-file-earmark-text","Upload and manage important documents"],["tasks","Tasks / Reminder","bi-calendar-check","Add and track important tasks and reminders"],["backup","Data Backup","bi-database","Backup and restore your data securely"]
-    ];
-    moduleContent.innerHTML=`${pageHeader("bi-grid","More","Additional tools, reports and management options.")}<section class="more-grid">${cards.map(([key,title,icon,desc,badge])=>`<button type="button" class="more-card" data-more="${key}"><div class="more-icon"><i class="bi ${icon}"></i></div><div><h3>${title}${badge?`<span class="new-badge">${badge}</span>`:""}</h3><p>${desc}</p></div><i class="bi bi-chevron-right more-arrow"></i></button>`).join("")}</section>`;
-    moduleContent.querySelectorAll("[data-more]").forEach(btn=>btn.addEventListener("click",()=>{state.moreView=btn.dataset.more;renderMore();}));
+    moduleContainer.querySelectorAll("[data-preview-doc]").forEach(el => {
+        el.addEventListener("click", () => {
+            const docLabel = el.dataset.previewDoc;
+            const docFile = el.dataset.docFile;
+            openModal(docLabel, `
+                <div class="text-center p-4 bg-light rounded-4 border">
+                    <i class="bi bi-file-earmark-check text-primary" style="font-size:3rem;"></i>
+                    <h6 class="fw-bold mt-2 mb-1">${escapeHtml(docLabel)}</h6>
+                    <p class="text-muted small mb-3">File Reference: <strong>${escapeHtml(docFile)}</strong></p>
+                    <div class="small text-secondary">Resident: ${escapeHtml(profile ? profile.fullName : "—")} &bull; Month: ${escapeHtml(state.selectedMonth)}</div>
+                </div>
+            `);
+        });
+    });
 }
 
-function renderBeds(){
-    const beds=getMonthData().beds; const occupied=beds.occupied ?? beds.totalStudents; const empty=Math.max(0,beds.totalBeds-occupied); const pct=beds.totalBeds?((occupied/beds.totalBeds)*100).toFixed(1):"0.0";
-    if(!beds.totalBeds){moduleContent.innerHTML=`${pageHeader("bi-bed-fill","Beds Details Report","Complete bed occupancy, room, floor and month-wise analysis.")}<div class="empty-state">No bed data available for ${escapeHtml(selectedMonth)}.</div>`;return;}
-    moduleContent.innerHTML=`${pageHeader("bi-bed-fill","Beds Details Report","Complete bed occupancy, room, floor and month-wise analysis.")}<section class="stats-grid">${statCard("bi-bed-fill","Total Beds",beds.totalBeds)}${statCard("bi-people-fill","Total Students",beds.totalStudents)}${statCard("bi-bed-fill","Occupied Beds",`${occupied} (${pct}%)`,"success")}${statCard("bi-bed","Empty Beds",`${empty} (${(100-Number(pct)).toFixed(1)}%)`,"muted")}</section><div class="beds-tabs">${[["overview","Overview"],["floor","Floor-wise"],["room","Room-wise"],["seater","Seater-wise"],["month","Month-wise"]].map(([v,l])=>`<button type="button" class="${(state.bedsView||'overview')===v?'active':''}" data-beds-tab="${v}">${l}</button>`).join("")}</div><div id="bedsMain"></div>`;
-    document.querySelectorAll("[data-beds-tab]").forEach(btn=>btn.addEventListener("click",()=>{state.bedsView=btn.dataset.bedsTab;renderBeds();})); renderBedsMain();
+function renderUpdateProfileView() {
+    const profiles = getMonthData().profiles;
+    if (!profiles.length) {
+        moduleContainer.innerHTML = `
+            <div class="page-header">
+                <div class="page-title-wrap">
+                    <div class="page-icon"><i class="bi bi-pencil-square"></i></div>
+                    <div><h1>Update Profile</h1><p>Edit existing profile records for ${escapeHtml(state.selectedMonth)}.</p></div>
+                </div>
+            </div>
+            <div class="panel-card text-center py-5">
+                <p class="text-muted mb-3">No profiles available in ${escapeHtml(state.selectedMonth)} to update.</p>
+                <button type="button" class="btn btn-primary rounded-3" id="goAddProfileFromEmpty">Add New Profile</button>
+            </div>
+        `;
+        document.getElementById("goAddProfileFromEmpty").addEventListener("click", () => switchModule("profile", "add"));
+        return;
+    }
+
+    const target = profiles.find(p => p.id === state.editProfileId) || profiles[0];
+    state.editProfileId = target.id;
+    renderProfileForm(target, profiles);
 }
-function renderBedsMain(){ const v=state.bedsView||'overview'; const target=document.getElementById("bedsMain"); if(!target)return; const b=getMonthData().beds; if(v==='floor'){target.innerHTML=`<section class="app-panel"><div class="panel-heading"><h2><i class="bi bi-layers"></i> Floor-wise Bed Status (${escapeHtml(selectedMonth)})</h2></div>${bedsFloorTable(b)}</section>`;return;} if(v==='room'){target.innerHTML=`<section class="app-panel"><div class="panel-heading"><h2><i class="bi bi-door-open"></i> Room-wise Details (${escapeHtml(selectedMonth)})</h2><div class="search-wrap compact-search"><i class="bi bi-search"></i><input id="roomSearch" type="search" placeholder="Search by room no. or student name..."></div></div><div id="roomTable">${bedsRoomTable(b.rooms)}</div></section>`;document.getElementById("roomSearch").addEventListener("input",()=>{const q=document.getElementById("roomSearch").value.toLowerCase();document.getElementById("roomTable").innerHTML=bedsRoomTable(b.rooms.filter(r=>r.room.toLowerCase().includes(q)||r.students.toLowerCase().includes(q)));});return;} if(v==='seater'){target.innerHTML=`<section class="app-panel"><div class="panel-heading"><h2><i class="bi bi-pie-chart"></i> Room Type (Seater-wise)</h2></div><div class="seater-grid">${Object.entries(b.seaters).map(([label,count])=>`<div><i class="bi bi-bed-fill"></i><span>${label}</span><strong>${count}</strong><small>${b.totalBeds?((count/b.totalBeds)*100).toFixed(1):0}%</small></div>`).join("")}</div></section>`;return;} if(v==='month'){target.innerHTML=`<section class="app-panel"><div class="panel-heading"><h2><i class="bi bi-bar-chart"></i> Monthly Trend (Occupancy %)</h2></div><div class="simple-bars">${b.occupancyTrend.map(x=>`<div><strong>${x.percent}%</strong><div class="simple-bar"><span style="height:${x.percent}%"></span></div><b>${x.month}</b></div>`).join("")}</div></section>`;return;} target.innerHTML=`<div class="beds-overview-grid"><section class="app-panel"><div class="panel-heading"><h2><i class="bi bi-layers"></i> Floor-wise Bed Status</h2></div>${bedsFloorTable(b)}</section><section class="app-panel"><div class="panel-heading"><h2><i class="bi bi-pie-chart"></i> Room Type (Seater-wise)</h2></div><div class="seater-list">${Object.entries(b.seaters).map(([k,v])=>`<div><span>${k}</span><b>${v}</b></div>`).join("")}</div></section><section class="app-panel"><div class="panel-heading"><h2><i class="bi bi-bar-chart"></i> Monthly Trend (Occupancy %)</h2></div><div class="simple-bars">${b.occupancyTrend.map(x=>`<div><strong>${x.percent}%</strong><div class="simple-bar"><span style="height:${x.percent}%"></span></div><b>${x.month}</b></div>`).join("")}</div></section></div><section class="app-panel mt-3"><div class="panel-heading"><h2><i class="bi bi-door-open"></i> Room-wise Details</h2></div>${bedsRoomTable(b.rooms)}</section>`; }
-function bedsFloorTable(b){return `<div class="table-scroll"><table class="data-table"><thead><tr><th>Floor</th><th>Total Beds</th><th>Occupied</th><th>Empty</th><th>Occupancy</th></tr></thead><tbody>${b.floors.map(f=>`<tr><td>${f.floor}</td><td>${f.totalBeds}</td><td>${f.occupied}</td><td>${f.empty}</td><td><span class="occupancy-pill">${(f.occupied/f.totalBeds*100).toFixed(1)}%</span></td></tr>`).join("")}<tr class="total-row"><th>Total</th><th>${b.floors.reduce((s,x)=>s+x.totalBeds,0)}</th><th>${b.floors.reduce((s,x)=>s+x.occupied,0)}</th><th>${b.floors.reduce((s,x)=>s+x.empty,0)}</th><th>${b.totalBeds?((b.totalStudents/b.totalBeds)*100).toFixed(1):0}%</th></tr></tbody></table></div>`;}
-function bedsRoomTable(rooms){return `<div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Room No.</th><th>Floor</th><th>Room Type</th><th>Total Beds</th><th>Occupied</th><th>Empty</th><th>Students</th></tr></thead><tbody>${rooms.length?rooms.map((r,i)=>`<tr><td>${i+1}</td><td><strong>${r.room}</strong></td><td>${r.floor}</td><td>${r.roomType}</td><td>${r.totalBeds}</td><td>${r.occupied}</td><td>${r.empty}</td><td>${escapeHtml(r.students)}</td></tr>`).join(""):`<tr><td colspan="8" class="empty-row">No room data.</td></tr>`}</tbody></table></div>`;}
 
-function renderVisitors(){ const records=getMonthData().visitors; const yes=records.filter(r=>r.roomRequired==='Yes').length,no=records.length-yes; moduleContent.innerHTML=`${pageHeader("bi-people","Visitor Enquiries Report","Track all visitors & room enquiries month-wise.")}<section class="stats-grid">${statCard("bi-people-fill","Total Visitors",records.length,"highlight")}${statCard("bi-check-circle-fill","Room Required",yes,"success")}${statCard("bi-x-circle-fill","No Room Required",no,"danger")}${monthCard()}</section><section class="two-column-panels visitor-chart-grid"><section class="app-panel"><div class="panel-heading"><h2><i class="bi bi-bar-chart"></i> Month-wise Visitors</h2></div>${visitorBarChart()}</section><section class="app-panel"><div class="panel-heading"><h2><i class="bi bi-pie-chart"></i> Visitor Status (${escapeHtml(selectedMonth)})</h2></div>${visitorDonut(records.length,yes,no)}</section></section><section class="filter-panel app-panel"><div class="filter-controls visitor-filters"><div class="search-wrap"><i class="bi bi-search"></i><input id="visitorSearch" type="search" placeholder="Search by name or mobile..."></div><select id="visitorRoom"><option value="">Room Required</option><option>Yes</option><option>No</option></select><select id="visitorSource"><option value="">Source (How did you hear)</option>${[...new Set(records.map(r=>r.source))].map(s=>`<option>${escapeHtml(s)}</option>`).join("")}</select><button class="reset-button" id="visitorReset"><i class="bi bi-arrow-counterclockwise"></i> Reset</button></div></section><section class="app-panel table-panel"><div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Timestamp</th><th>Full Name</th><th>Mobile Number</th><th>Room Required</th><th>How did you hear about us</th></tr></thead><tbody id="visitorTable"></tbody></table></div><div class="table-footer"><span id="visitorSummary"></span><div id="visitorPagination" class="pagination"></div></div></section>`; bindVisitorFilters(); renderVisitorTable(); }
-function visitorBarChart(){ return `<div class="bar-chart light-chart">${months.slice(0,2).map(m=>{const c=monthlyData[m].visitors.length;return `<div class="bar-column"><strong>${c}</strong><span class="bar" style="height:${Math.max(10,c*18)}px"></span><small>${m.split(' ')[0].slice(0,3)} ${m.split(' ')[1]}</small></div>`}).join("")}</div>`; }
-function visitorDonut(total,yes,no){const pct=total?Math.round(yes/total*100):0;return `<div class="donut-large green-red" style="--yes:${pct}%"><div><strong>${total}</strong><span>Visitors</span></div></div><div class="chart-legend"><span><i class="legend-dot paid"></i>Room Required : ${yes} (${pct}%)</span><span><i class="legend-dot pending"></i>No Room Required : ${no} (${100-pct}%)</span></div>`;}
-function bindVisitorFilters(){["visitorSearch","visitorRoom","visitorSource"].forEach(id=>document.getElementById(id).addEventListener("input",()=>{state.visitorPage=1;renderVisitorTable();}));document.getElementById("visitorReset").addEventListener("click",()=>{document.getElementById("visitorSearch").value="";document.getElementById("visitorRoom").value="";document.getElementById("visitorSource").value="";state.visitorPage=1;renderVisitorTable();});}
-function renderVisitorTable(){const q=document.getElementById("visitorSearch")?.value.toLowerCase()||"",room=document.getElementById("visitorRoom")?.value||"",source=document.getElementById("visitorSource")?.value||"";const rows=getMonthData().visitors.filter(r=>(!q||r.fullName.toLowerCase().includes(q)||r.mobileNumber.includes(q))&&(!room||r.roomRequired===room)&&(!source||r.source===source));const pages=Math.max(1,Math.ceil(rows.length/PAGE_SIZE));state.visitorPage=Math.min(state.visitorPage,pages);const start=(state.visitorPage-1)*PAGE_SIZE,slice=rows.slice(start,start+PAGE_SIZE),tbody=document.getElementById("visitorTable");tbody.innerHTML=slice.length?slice.map((r,i)=>`<tr><td>${start+i+1}</td><td>${r.timestamp}</td><td>${r.fullName}</td><td>${r.mobileNumber}</td><td><span class="room-pill ${r.roomRequired==='Yes'?'yes':'no'}">${r.roomRequired}</span></td><td>${r.source}</td></tr>`).join(""):`<tr><td colspan="6" class="empty-row">No visitor records found for this month.</td></tr>`;document.getElementById("visitorSummary").textContent=`Showing ${rows.length?start+1:0} – ${Math.min(start+PAGE_SIZE,rows.length)} of ${rows.length} entries`;renderPagination(document.getElementById("visitorPagination"),pages,state.visitorPage,p=>{state.visitorPage=p;renderVisitorTable();});}
-
-function renderMoreOption(view) {
-    const options = {
-        reports: ["Reports", "bi-bar-chart", "View and download management report summaries using the frontend sample data."],
-        rooms: ["Room Management", "bi-door-open", "Review room numbers, room types and current occupancy from the selected month."],
-        notice: ["Notice & Updates", "bi-megaphone", "Management notice area for the selected month."],
-        documents: ["Documents", "bi-file-earmark-text", "Management document area for the selected month."],
-        tasks: ["Tasks / Reminder", "bi-calendar-check", "Management task and reminder area for the selected month."],
-        backup: ["Data Backup", "bi-database", "Create a local frontend JSON backup of the current sample data."],
-        settings: ["Settings", "bi-gear", "Frontend settings area."]
+function renderProfileForm(existingProfile, allProfilesForSelect = null) {
+    const isEdit = Boolean(existingProfile);
+    const p = existingProfile || {
+        userType: "Student", fullName: "", email: "", mobileNumber: "",
+        collegeName: "", courseProgram: "", whichYear: "",
+        guardianName: "", guardianMobile: "", homeAddress: "",
+        bookingDate: "", shiftingDate: "", roomNumber: "", roomType: "2 Seater",
+        bookingAmount: 5000, registrationFee: 1000, monthlyRent: 7000, securityDeposit: 7000,
+        paymentMode: "UPI", paymentReceipt: "", aadhaarFront: "", aadhaarBack: "", yourId: "",
+        companyName: "", companyAddress: ""
     };
-    const item = options[view] || options.reports;
-    const extra = view === "rooms" ? `<div class="table-scroll mt-3">${bedsRoomTable(getMonthData().beds.rooms || [])}</div>` : view === "backup" ? `<button type="button" class="primary-button mt-3" id="backupButton"><i class="bi bi-download"></i> Download Current Data</button>` : `<div class="empty-state">This section is ready for the selected month: <strong>${escapeHtml(selectedMonth)}</strong>.</div>`;
-    moduleContent.innerHTML = `${pageHeader(item[1], item[0], item[2])}<section class="app-panel simple-form-panel"><button type="button" class="secondary-button" id="backToMore"><i class="bi bi-arrow-left"></i> Back to More</button>${extra}</section>`;
-    document.getElementById("backToMore").addEventListener("click",()=>{state.moreView='more';renderMore();});
-    if(view==='backup') document.getElementById("backupButton").addEventListener("click",downloadBackup);
+
+    moduleContainer.innerHTML = `
+        <div class="page-header">
+            <div class="page-title-wrap">
+                <div class="page-icon"><i class="bi ${isEdit ? "bi-pencil-square" : "bi-person-plus-fill"}"></i></div>
+                <div>
+                    <h1>${isEdit ? "Update Profile" : "Add New Profile"}</h1>
+                    <p>${isEdit ? "Modify student/employee record" : "Create a new resident profile"} for ${escapeHtml(state.selectedMonth)}.</p>
+                </div>
+            </div>
+            <button type="button" class="btn btn-outline-primary rounded-3" id="backToAllProfilesBtn"><i class="bi bi-arrow-left me-1"></i>Back to Profiles</button>
+        </div>
+
+        ${isEdit && allProfilesForSelect ? `
+            <div class="filter-card mb-3">
+                <label class="fw-semibold small text-muted mb-0">Select Profile to Edit:</label>
+                <select id="selectProfileToEdit" class="filter-select flex-grow-1">
+                    ${allProfilesForSelect.map(item => `<option value="${escapeHtml(item.id)}" ${item.id === p.id ? "selected" : ""}>${escapeHtml(item.fullName)} (${escapeHtml(item.roomNumber)} – ${escapeHtml(item.userType)})</option>`).join("")}
+                </select>
+            </div>
+        ` : ""}
+
+        <form id="profileForm" class="panel-card">
+            <h6 class="fw-bold text-primary mb-3"><i class="bi bi-person me-1"></i>Personal &amp; Academic Details</h6>
+            <div class="row g-3 mb-4">
+                <div class="col-md-4"><label class="form-label small fw-semibold">Full Name *</label><input name="fullName" class="form-control" value="${escapeHtml(p.fullName)}" required></div>
+                <div class="col-md-4"><label class="form-label small fw-semibold">Email Address *</label><input type="email" name="email" class="form-control" value="${escapeHtml(p.email)}" required></div>
+                <div class="col-md-4"><label class="form-label small fw-semibold">Mobile Number *</label><input name="mobileNumber" class="form-control" value="${escapeHtml(p.mobileNumber)}" required></div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-semibold">Student or Employee *</label>
+                    <select name="userType" class="form-select">
+                        <option value="Student" ${p.userType === "Student" ? "selected" : ""}>Student</option>
+                        <option value="Employee" ${p.userType === "Employee" ? "selected" : ""}>Employee</option>
+                    </select>
+                </div>
+                <div class="col-md-3"><label class="form-label small fw-semibold">College / University</label><input name="collegeName" class="form-control" value="${escapeHtml(p.collegeName)}"></div>
+                <div class="col-md-3"><label class="form-label small fw-semibold">Course / Program</label><input name="courseProgram" class="form-control" value="${escapeHtml(p.courseProgram)}"></div>
+                <div class="col-md-3"><label class="form-label small fw-semibold">Which Year</label><input name="whichYear" class="form-control" value="${escapeHtml(p.whichYear)}"></div>
+                <div class="col-md-4"><label class="form-label small fw-semibold">Father / Guardian Name</label><input name="guardianName" class="form-control" value="${escapeHtml(p.guardianName)}"></div>
+                <div class="col-md-4"><label class="form-label small fw-semibold">Parent / Guardian Mobile</label><input name="guardianMobile" class="form-control" value="${escapeHtml(p.guardianMobile)}"></div>
+                <div class="col-md-4"><label class="form-label small fw-semibold">Home Address</label><input name="homeAddress" class="form-control" value="${escapeHtml(p.homeAddress)}"></div>
+            </div>
+
+            <h6 class="fw-bold text-primary mb-3"><i class="bi bi-house-check me-1"></i>Booking, Room &amp; Payment Details</h6>
+            <div class="row g-3 mb-4">
+                <div class="col-md-3"><label class="form-label small fw-semibold">Booking Date</label><input name="bookingDate" class="form-control" placeholder="e.g. 05 Dec 2026" value="${escapeHtml(p.bookingDate)}"></div>
+                <div class="col-md-3"><label class="form-label small fw-semibold">Shifting Date</label><input name="shiftingDate" class="form-control" placeholder="e.g. 08 Dec 2026" value="${escapeHtml(p.shiftingDate)}"></div>
+                <div class="col-md-3"><label class="form-label small fw-semibold">Room Number *</label><input name="roomNumber" class="form-control" value="${escapeHtml(p.roomNumber)}" required></div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-semibold">Room Type</label>
+                    <select name="roomType" class="form-select">
+                        ${["1 Seater", "2 Seater", "3 Seater", "4 Seater"].map(rt => `<option value="${rt}" ${p.roomType === rt ? "selected" : ""}>${rt}</option>`).join("")}
+                    </select>
+                </div>
+                <div class="col-md-3"><label class="form-label small fw-semibold">Booking Amount (₹)</label><input type="number" name="bookingAmount" class="form-control" value="${Number(p.bookingAmount) || 0}"></div>
+                <div class="col-md-3"><label class="form-label small fw-semibold">Registration Fee (₹)</label><input type="number" name="registrationFee" class="form-control" value="${Number(p.registrationFee) || 0}"></div>
+                <div class="col-md-3"><label class="form-label small fw-semibold">Monthly Rent (₹)</label><input type="number" name="monthlyRent" class="form-control" value="${Number(p.monthlyRent) || 0}"></div>
+                <div class="col-md-3"><label class="form-label small fw-semibold">Security Deposit (₹)</label><input type="number" name="securityDeposit" class="form-control" value="${Number(p.securityDeposit) || 0}"></div>
+                <div class="col-md-4">
+                    <label class="form-label small fw-semibold">Payment Mode</label>
+                    <select name="paymentMode" class="form-select">
+                        ${["UPI", "Online", "Cash", "Bank Transfer"].map(m => `<option value="${m}" ${p.paymentMode === m ? "selected" : ""}>${m}</option>`).join("")}
+                    </select>
+                </div>
+                <div class="col-md-4"><label class="form-label small fw-semibold">Payment Receipt File</label><input name="paymentReceipt" class="form-control" placeholder="receipt.pdf" value="${escapeHtml(p.paymentReceipt)}"></div>
+                <div class="col-md-4"><label class="form-label small fw-semibold">Your ID File</label><input name="yourId" class="form-control" placeholder="id_card.jpg" value="${escapeHtml(p.yourId)}"></div>
+            </div>
+
+            <h6 class="fw-bold text-primary mb-3"><i class="bi bi-briefcase me-1"></i>Documents &amp; Employee Details</h6>
+            <div class="row g-3 mb-4">
+                <div class="col-md-3"><label class="form-label small fw-semibold">Aadhaar Card – Front</label><input name="aadhaarFront" class="form-control" placeholder="aadhaar_front.jpg" value="${escapeHtml(p.aadhaarFront)}"></div>
+                <div class="col-md-3"><label class="form-label small fw-semibold">Aadhaar Card – Back</label><input name="aadhaarBack" class="form-control" placeholder="aadhaar_back.jpg" value="${escapeHtml(p.aadhaarBack)}"></div>
+                <div class="col-md-3"><label class="form-label small fw-semibold">Company Name (Employees)</label><input name="companyName" class="form-control" value="${escapeHtml(p.companyName)}"></div>
+                <div class="col-md-3"><label class="form-label small fw-semibold">Company Address</label><input name="companyAddress" class="form-control" value="${escapeHtml(p.companyAddress)}"></div>
+            </div>
+
+            <div class="d-flex gap-2 justify-content-end">
+                <button type="button" class="btn btn-light border rounded-3 px-4" id="cancelProfileFormBtn">Cancel</button>
+                <button type="submit" class="btn btn-primary rounded-3 px-4 fw-semibold">
+                    <i class="bi bi-check2-circle me-1"></i>${isEdit ? "Save Changes" : "Add Profile"}
+                </button>
+            </div>
+        </form>
+    `;
+
+    document.getElementById("backToAllProfilesBtn").addEventListener("click", () => switchModule("profile", "all"));
+    document.getElementById("cancelProfileFormBtn").addEventListener("click", () => switchModule("profile", "all"));
+
+    const selector = document.getElementById("selectProfileToEdit");
+    if (selector) {
+        selector.addEventListener("change", () => {
+            state.editProfileId = selector.value;
+            renderUpdateProfileView();
+        });
+    }
+
+    document.getElementById("profileForm").addEventListener("submit", e => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const updatedRecord = {
+            id: isEdit ? p.id : "PRF-" + Date.now(),
+            timestamp: isEdit ? p.timestamp : formatNowTimestamp(),
+            fullName: fd.get("fullName").trim(),
+            email: fd.get("email").trim(),
+            mobileNumber: fd.get("mobileNumber").trim(),
+            userType: fd.get("userType"),
+            collegeName: fd.get("collegeName").trim(),
+            courseProgram: fd.get("courseProgram").trim(),
+            whichYear: fd.get("whichYear").trim(),
+            guardianName: fd.get("guardianName").trim(),
+            guardianMobile: fd.get("guardianMobile").trim(),
+            homeAddress: fd.get("homeAddress").trim(),
+            bookingDate: fd.get("bookingDate").trim(),
+            shiftingDate: fd.get("shiftingDate").trim(),
+            roomNumber: fd.get("roomNumber").trim(),
+            roomType: fd.get("roomType"),
+            bookingAmount: Number(fd.get("bookingAmount")) || 0,
+            registrationFee: Number(fd.get("registrationFee")) || 0,
+            monthlyRent: Number(fd.get("monthlyRent")) || 0,
+            securityDeposit: Number(fd.get("securityDeposit")) || 0,
+            paymentMode: fd.get("paymentMode"),
+            paymentReceipt: fd.get("paymentReceipt").trim() || "receipt_uploaded.pdf",
+            aadhaarFront: fd.get("aadhaarFront").trim() || "aadhaar_front.jpg",
+            aadhaarBack: fd.get("aadhaarBack").trim() || "aadhaar_back.jpg",
+            yourId: fd.get("yourId").trim() || "id_card.jpg",
+            employeeFullName: fd.get("userType") === "Employee" ? fd.get("fullName").trim() : "",
+            employeeMobile: fd.get("userType") === "Employee" ? fd.get("mobileNumber").trim() : "",
+            companyName: fd.get("companyName").trim(),
+            companyAddress: fd.get("companyAddress").trim()
+        };
+
+        const list = getMonthData().profiles;
+        if (isEdit) {
+            const idx = list.findIndex(item => item.id === p.id);
+            if (idx >= 0) list[idx] = updatedRecord;
+        } else {
+            list.unshift(updatedRecord);
+        }
+        state.selectedProfileId = updatedRecord.id;
+        switchModule("profile", "all");
+    });
 }
 
-function downloadBackup() {
-    const blob = new Blob([JSON.stringify(monthlyData, null, 2)], {type:"application/json"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `elite-stay-${selectedMonth.toLowerCase().replace(/[^a-z0-9]+/g,"-")}-backup.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+/* ==========================================================================
+   MODULE 2: PAYMENT MANAGEMENT
+   ========================================================================== */
+function renderPaymentModule() {
+    if (state.activeSubView === "add") return renderAddPaymentForm();
+
+    const data = getMonthData();
+    const allPayments = data.payments || [];
+
+    // Apply sub-view preset
+    let basePayments = allPayments;
+    let subHeading = "Track and manage all rent, booking and other payments.";
+    if (state.activeSubView === "pending") {
+        basePayments = allPayments.filter(p => p.status === "Pending");
+        subHeading = "Review and clear pending payments for " + state.selectedMonth + ".";
+    } else if (state.activeSubView === "history") {
+        basePayments = allPayments.filter(p => p.status === "Paid");
+        subHeading = "Completed payment history for " + state.selectedMonth + ".";
+    }
+
+    const totalAmount = allPayments.reduce((s, p) => s + (Number(p.amountPaid) || 0), 0);
+    const paidAmount = allPayments.filter(p => p.status === "Paid").reduce((s, p) => s + (Number(p.amountPaid) || 0), 0);
+    const pendingAmount = allPayments.filter(p => p.status === "Pending").reduce((s, p) => s + (Number(p.amountPaid) || 0), 0);
+
+    const q = state.paymentSearch.trim().toLowerCase();
+    const filtered = basePayments.filter(p => {
+        const matchQ = !q || [p.fullName, p.mobileNumber, p.email, p.roomNumber, p.amountType]
+            .some(v => (v || "").toLowerCase().includes(q));
+        const matchType = !state.paymentTypeFilter || p.amountType === state.paymentTypeFilter;
+        const matchMode = !state.paymentModeFilter || p.paymentMode === state.paymentModeFilter;
+        const matchStatus = !state.paymentStatusFilter || p.status === state.paymentStatusFilter;
+        return matchQ && matchType && matchMode && matchStatus;
+    });
+
+    const PAGE_SIZE = 5;
+    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    if (state.paymentPage > totalPages) state.paymentPage = totalPages;
+    const start = (state.paymentPage - 1) * PAGE_SIZE;
+    const pageRecords = filtered.slice(start, start + PAGE_SIZE);
+
+    // Amount Type Breakdown
+    const amountTypes = ["Monthly Rent", "Booking Amount", "Registration Fee", "Security Deposit"];
+    const typeTotals = amountTypes.map(t => ({
+        label: t,
+        total: allPayments.filter(p => p.amountType === t).reduce((s, p) => s + (Number(p.amountPaid) || 0), 0)
+    }));
+    const maxTypeVal = Math.max(1, ...typeTotals.map(t => t.total));
+
+    const paidPct = totalAmount ? Math.round((paidAmount / totalAmount) * 1000) / 10 : 0;
+    const pendingPct = totalAmount ? Math.round((100 - paidPct) * 10) / 10 : 0;
+
+    moduleContainer.innerHTML = `
+        <div class="page-header">
+            <div class="page-title-wrap">
+                <div class="page-icon"><i class="bi bi-credit-card-2-front-fill"></i></div>
+                <div>
+                    <h1>Payment Management</h1>
+                    <p>${escapeHtml(subHeading)}</p>
+                </div>
+            </div>
+            <button type="button" class="btn btn-primary rounded-3 fw-semibold" id="quickAddPaymentBtn">
+                <i class="bi bi-plus-circle me-1"></i>Add Payment
+            </button>
+        </div>
+
+        <section class="kpi-grid">
+            <article class="kpi-card highlight">
+                <div class="kpi-icon"><i class="bi bi-wallet2"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">Total Payments</div><div class="kpi-value">${formatINR(totalAmount)}</div></div>
+            </article>
+            <article class="kpi-card">
+                <div class="kpi-icon green"><i class="bi bi-check-circle-fill"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">Paid</div><div class="kpi-value">${formatINR(paidAmount)}</div></div>
+            </article>
+            <article class="kpi-card">
+                <div class="kpi-icon red"><i class="bi bi-clock-history"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">Pending</div><div class="kpi-value">${formatINR(pendingAmount)}</div></div>
+            </article>
+            <article class="kpi-card">
+                <div class="kpi-icon"><i class="bi bi-people-fill"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">Total Records</div><div class="kpi-value">${allPayments.length}</div></div>
+            </article>
+            <article class="kpi-card">
+                <div class="kpi-icon"><i class="bi bi-calendar3"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">Selected Month</div><div class="kpi-value month-val">${escapeHtml(state.selectedMonth)}</div></div>
+            </article>
+        </section>
+
+        <section class="filter-card">
+            <div class="search-box">
+                <i class="bi bi-search"></i>
+                <input type="search" id="paymentSearchInput" value="${escapeHtml(state.paymentSearch)}" placeholder="Search by name, mobile, email or room no...">
+            </div>
+            <select id="paymentTypeFilter" class="filter-select">
+                <option value="">All Amount Type</option>
+                ${amountTypes.map(t => `<option value="${t}" ${state.paymentTypeFilter === t ? "selected" : ""}>${t}</option>`).join("")}
+            </select>
+            <select id="paymentModeFilter" class="filter-select">
+                <option value="">All Payment Mode</option>
+                ${["UPI", "Online", "Cash", "Bank Transfer"].map(m => `<option value="${m}" ${state.paymentModeFilter === m ? "selected" : ""}>${m}</option>`).join("")}
+            </select>
+            <select id="paymentStatusFilter" class="filter-select">
+                <option value="">All Status</option>
+                <option value="Paid" ${state.paymentStatusFilter === "Paid" ? "selected" : ""}>Paid</option>
+                <option value="Pending" ${state.paymentStatusFilter === "Pending" ? "selected" : ""}>Pending</option>
+            </select>
+            <button type="button" class="btn-reset" id="paymentResetBtn"><i class="bi bi-arrow-clockwise"></i> Reset</button>
+        </section>
+
+        <div class="panel-card">
+            <div class="table-wrap desktop-only-table">
+                <div class="table-responsive-custom">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Timestamp</th>
+                                <th>Full Name</th>
+                                <th>Type</th>
+                                <th>Room No.</th>
+                                <th>Room Type</th>
+                                <th>Fee Month</th>
+                                <th>Amount Type</th>
+                                <th>Amount Paid</th>
+                                <th>Mode</th>
+                                <th>Status</th>
+                                <th>Receipt</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${pageRecords.length ? pageRecords.map((p, idx) => `
+                                <tr>
+                                    <td>${start + idx + 1}</td>
+                                    <td class="small text-nowrap">${escapeHtml(p.timestamp)}</td>
+                                    <td class="fw-semibold">${escapeHtml(p.fullName)}</td>
+                                    <td><span class="badge-soft ${p.userType === "Student" ? "badge-student" : "badge-employee"}">${escapeHtml(p.userType)}</span></td>
+                                    <td>${escapeHtml(p.roomNumber)}</td>
+                                    <td>${escapeHtml(p.roomType)}</td>
+                                    <td>${escapeHtml(p.feeMonth)}</td>
+                                    <td>${escapeHtml(p.amountType)}</td>
+                                    <td class="fw-bold">${formatINR(p.amountPaid)}</td>
+                                    <td>${escapeHtml(p.paymentMode)}</td>
+                                    <td><span class="badge-soft ${p.status === "Paid" ? "badge-paid" : "badge-pending"}">${escapeHtml(p.status)}</span></td>
+                                    <td class="text-nowrap">
+                                        <button type="button" class="action-icon-btn me-1" data-view-payment="${escapeHtml(p.id)}" title="View Receipt & Details"><i class="bi bi-file-earmark-image"></i></button>
+                                        ${p.status === "Pending" ? `<button type="button" class="action-icon-btn text-success" data-mark-paid="${escapeHtml(p.id)}" title="Mark Paid"><i class="bi bi-check-lg"></i></button>` : ""}
+                                    </td>
+                                </tr>
+                            `).join("") : `<tr><td colspan="12" class="empty-cell">No payment records found for ${escapeHtml(state.selectedMonth)}.</td></tr>`}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Mobile Payment Cards -->
+            <div class="mobile-cards-list">
+                ${pageRecords.length ? pageRecords.map(p => `
+                    <div class="mobile-record-card" data-view-payment="${escapeHtml(p.id)}">
+                        <div class="d-flex justify-content-between align-items-start gap-2">
+                            <div>
+                                <div class="fw-bold">${escapeHtml(p.fullName)}</div>
+                                <div class="small text-muted">${escapeHtml(p.roomNumber)} &bull; ${escapeHtml(p.roomType)} &bull; ${escapeHtml(p.amountType)}</div>
+                                <div class="small text-muted">${escapeHtml(p.paymentDate)} &bull; ${escapeHtml(p.paymentMode)}</div>
+                            </div>
+                            <div class="text-end">
+                                <div class="fw-bold text-primary">${formatINR(p.amountPaid)}</div>
+                                <span class="badge-soft ${p.status === "Paid" ? "badge-paid" : "badge-pending"}">${escapeHtml(p.status)}</span>
+                            </div>
+                        </div>
+                    </div>
+                `).join("") : `<div class="text-center text-muted py-4">No payment records found for ${escapeHtml(state.selectedMonth)}.</div>`}
+            </div>
+
+            <div class="pagination-bar">
+                <div>Showing ${filtered.length ? start + 1 : 0} – ${Math.min(start + PAGE_SIZE, filtered.length)} of ${filtered.length} records</div>
+                <div class="pagination-controls" id="paymentPagination"></div>
+            </div>
+        </div>
+
+        <section class="analytics-grid">
+            <article class="panel-card">
+                <h3 class="panel-title mb-3"><i class="bi bi-bar-chart-fill"></i> Amount Type Summary (${escapeHtml(state.selectedMonth)})</h3>
+                ${typeTotals.map(t => `
+                    <div class="h-bar-row">
+                        <div class="h-bar-head"><span>${escapeHtml(t.label)}</span><strong>${formatINR(t.total)}</strong></div>
+                        <div class="h-bar-track"><div class="h-bar-fill" style="width:${t.total ? Math.max(6, Math.round((t.total / maxTypeVal) * 100)) : 0}%"></div></div>
+                    </div>
+                `).join("")}
+            </article>
+
+            <article class="panel-card">
+                <h3 class="panel-title mb-3"><i class="bi bi-pie-chart-fill"></i> Payment Status (${escapeHtml(state.selectedMonth)})</h3>
+                <div class="donut-layout">
+                    <div class="donut-chart" style="background: conic-gradient(#22c55e 0 ${paidPct}%, #ef4444 ${paidPct}% 100%);">
+                        <div class="donut-center">
+                            <strong>${formatINR(totalAmount)}</strong>
+                            <span>Total</span>
+                        </div>
+                    </div>
+                    <div class="chart-legend">
+                        <div class="legend-item"><span class="legend-dot" style="background:#22c55e;"></span><span>Paid: <strong>${formatINR(paidAmount)}</strong> (${paidPct}%)</span></div>
+                        <div class="legend-item"><span class="legend-dot" style="background:#ef4444;"></span><span>Pending: <strong>${formatINR(pendingAmount)}</strong> (${pendingPct}%)</span></div>
+                    </div>
+                </div>
+            </article>
+        </section>
+    `;
+
+    // Bind events
+    document.getElementById("quickAddPaymentBtn").addEventListener("click", () => switchModule("payment", "add"));
+    document.getElementById("paymentSearchInput").addEventListener("input", e => { state.paymentSearch = e.target.value; state.paymentPage = 1; renderPaymentModule(); });
+    document.getElementById("paymentTypeFilter").addEventListener("change", e => { state.paymentTypeFilter = e.target.value; state.paymentPage = 1; renderPaymentModule(); });
+    document.getElementById("paymentModeFilter").addEventListener("change", e => { state.paymentModeFilter = e.target.value; state.paymentPage = 1; renderPaymentModule(); });
+    document.getElementById("paymentStatusFilter").addEventListener("change", e => { state.paymentStatusFilter = e.target.value; state.paymentPage = 1; renderPaymentModule(); });
+    document.getElementById("paymentResetBtn").addEventListener("click", () => {
+        state.paymentSearch = ""; state.paymentTypeFilter = ""; state.paymentModeFilter = ""; state.paymentStatusFilter = ""; state.paymentPage = 1;
+        renderPaymentModule();
+    });
+
+    moduleContainer.querySelectorAll("[data-view-payment]").forEach(el => {
+        el.addEventListener("click", () => {
+            const rec = allPayments.find(item => item.id === el.dataset.viewPayment);
+            if (!rec) return;
+            const stars = "★".repeat(rec.rating || 5) + "☆".repeat(5 - (rec.rating || 5));
+            openModal("Payment Receipt & Details", `
+                <div class="detail-list">
+                    <div class="detail-row"><span class="detail-label">Timestamp</span><span class="detail-val">${escapeHtml(rec.timestamp)}</span></div>
+                    <div class="detail-row"><span class="detail-label">Full Name</span><span class="detail-val">${escapeHtml(rec.fullName)}</span></div>
+                    <div class="detail-row"><span class="detail-label">Student / Employee</span><span class="detail-val">${escapeHtml(rec.userType)}</span></div>
+                    <div class="detail-row"><span class="detail-label">Email Address</span><span class="detail-val">${escapeHtml(rec.email)}</span></div>
+                    <div class="detail-row"><span class="detail-label">Mobile Number</span><span class="detail-val">${escapeHtml(rec.mobileNumber)}</span></div>
+                    <div class="detail-row"><span class="detail-label">Room Number / Type</span><span class="detail-val">${escapeHtml(rec.roomNumber)} (${escapeHtml(rec.roomType)})</span></div>
+                    <div class="detail-row"><span class="detail-label">Fee Month</span><span class="detail-val">${escapeHtml(rec.feeMonth)}</span></div>
+                    <div class="detail-row"><span class="detail-label">Monthly Rent</span><span class="detail-val">${formatINR(rec.monthlyRent)}</span></div>
+                    <div class="detail-row"><span class="detail-label">Amount Type</span><span class="detail-val">${escapeHtml(rec.amountType)}</span></div>
+                    <div class="detail-row"><span class="detail-label">Amount Paid</span><span class="detail-val text-primary fs-6">${formatINR(rec.amountPaid)}</span></div>
+                    <div class="detail-row"><span class="detail-label">Payment Date</span><span class="detail-val">${escapeHtml(rec.paymentDate)}</span></div>
+                    <div class="detail-row"><span class="detail-label">Payment Mode</span><span class="detail-val">${escapeHtml(rec.paymentMode)}</span></div>
+                    <div class="detail-row"><span class="detail-label">Status</span><span class="detail-val">${escapeHtml(rec.status)}</span></div>
+                    <div class="detail-row"><span class="detail-label">Rating</span><span class="detail-val text-warning">${stars}</span></div>
+                    <div class="detail-row"><span class="detail-label">Screenshot / Receipt</span><span class="detail-val">${escapeHtml(rec.receipt || "Uploaded")}</span></div>
+                </div>
+            `);
+        });
+    });
+
+    moduleContainer.querySelectorAll("[data-mark-paid]").forEach(btn => {
+        btn.addEventListener("click", e => {
+            e.stopPropagation();
+            const rec = allPayments.find(item => item.id === btn.dataset.markPaid);
+            if (rec) {
+                rec.status = "Paid";
+                renderApp();
+            }
+        });
+    });
+
+    buildPaginationButtons(
+        document.getElementById("paymentPagination"),
+        state.paymentPage,
+        totalPages,
+        page => { state.paymentPage = page; renderPaymentModule(); }
+    );
 }
 
-function renderSimpleForm(title, icon, description, type) {
-    moduleContent.innerHTML=`${pageHeader(icon,title,description)}<section class="app-panel simple-form-panel"><div class="simple-form-note"><i class="bi bi-info-circle"></i><span>Frontend-only demo form. Data can be connected to your final data source later.</span></div><form id="simpleForm" class="row g-3"><div class="col-md-6"><label class="form-label">Full Name</label><input class="form-control" required></div><div class="col-md-6"><label class="form-label">Mobile Number</label><input class="form-control" required></div><div class="col-md-6"><label class="form-label">${type==='expense'?'Amount':'Email Address'}</label><input class="form-control" ${type==='expense'?'type="number"':'type="email"'} required></div><div class="col-md-6"><label class="form-label">${type==='payment'?'Payment Mode':type==='expense'?'Frequency':'Room Number'}</label><select class="form-select"><option>Select</option><option>UPI</option><option>Online</option><option>Cash</option></select></div><div class="col-12"><button class="primary-button" type="submit">Save ${title}</button></div></form></section>`;
-    document.getElementById("simpleForm").addEventListener("submit",e=>{e.preventDefault();showModal(title,"<div class='success-state'><i class='bi bi-check-circle-fill'></i><h4>Saved successfully</h4><p>This frontend demo action completed successfully.</p></div>");});
+function renderAddPaymentForm() {
+    moduleContainer.innerHTML = `
+        <div class="page-header">
+            <div class="page-title-wrap">
+                <div class="page-icon"><i class="bi bi-plus-circle-fill"></i></div>
+                <div><h1>Add Payment Record</h1><p>Record a new payment for ${escapeHtml(state.selectedMonth)}.</p></div>
+            </div>
+            <button type="button" class="btn btn-outline-primary rounded-3" id="backToPaymentsBtn"><i class="bi bi-arrow-left me-1"></i>Back to Payments</button>
+        </div>
+
+        <form id="addPaymentForm" class="panel-card">
+            <div class="row g-3">
+                <div class="col-md-4"><label class="form-label small fw-semibold">Full Name *</label><input name="fullName" class="form-control" required></div>
+                <div class="col-md-4"><label class="form-label small fw-semibold">Email Address *</label><input type="email" name="email" class="form-control" required></div>
+                <div class="col-md-4"><label class="form-label small fw-semibold">Mobile Number *</label><input name="mobileNumber" class="form-control" required></div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-semibold">Student or Employee</label>
+                    <select name="userType" class="form-select"><option value="Student">Student</option><option value="Employee">Employee</option></select>
+                </div>
+                <div class="col-md-3"><label class="form-label small fw-semibold">Room Number *</label><input name="roomNumber" class="form-control" placeholder="e.g. A-101" required></div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-semibold">Room Type</label>
+                    <select name="roomType" class="form-select"><option>1 Seater</option><option selected>2 Seater</option><option>3 Seater</option><option>4 Seater</option></select>
+                </div>
+                <div class="col-md-3"><label class="form-label small fw-semibold">Fee Month</label><input name="feeMonth" class="form-control" value="${escapeHtml(state.selectedMonth)}"></div>
+                <div class="col-md-3"><label class="form-label small fw-semibold">Monthly Rent (₹)</label><input type="number" name="monthlyRent" class="form-control" value="7000"></div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-semibold">Amount Type</label>
+                    <select name="amountType" class="form-select"><option>Monthly Rent</option><option>Booking Amount</option><option>Registration Fee</option><option>Security Deposit</option></select>
+                </div>
+                <div class="col-md-3"><label class="form-label small fw-semibold">Amount Paid (₹) *</label><input type="number" name="amountPaid" class="form-control" required></div>
+                <div class="col-md-3"><label class="form-label small fw-semibold">Payment Date</label><input name="paymentDate" class="form-control" placeholder="e.g. 15 Dec 2026"></div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-semibold">Payment Mode</label>
+                    <select name="paymentMode" class="form-select"><option>UPI</option><option>Online</option><option>Cash</option><option>Bank Transfer</option></select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-semibold">Status</label>
+                    <select name="status" class="form-select"><option value="Paid">Paid</option><option value="Pending">Pending</option></select>
+                </div>
+                <div class="col-md-3"><label class="form-label small fw-semibold">Receipt File Name</label><input name="receipt" class="form-control" placeholder="receipt.jpg"></div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-semibold">Rating (1–5)</label>
+                    <select name="rating" class="form-select"><option value="5">5 ★</option><option value="4">4 ★</option><option value="3">3 ★</option><option value="2">2 ★</option><option value="1">1 ★</option></select>
+                </div>
+            </div>
+            <div class="d-flex gap-2 justify-content-end mt-4">
+                <button type="button" class="btn btn-light border rounded-3 px-4" id="cancelAddPaymentBtn">Cancel</button>
+                <button type="submit" class="btn btn-primary rounded-3 px-4 fw-semibold"><i class="bi bi-check2-circle me-1"></i>Save Payment</button>
+            </div>
+        </form>
+    `;
+
+    document.getElementById("backToPaymentsBtn").addEventListener("click", () => switchModule("payment", "all"));
+    document.getElementById("cancelAddPaymentBtn").addEventListener("click", () => switchModule("payment", "all"));
+    document.getElementById("addPaymentForm").addEventListener("submit", e => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        getMonthData().payments.unshift({
+            id: "PAY-" + Date.now(),
+            timestamp: formatNowTimestamp(),
+            fullName: fd.get("fullName").trim(),
+            email: fd.get("email").trim(),
+            mobileNumber: fd.get("mobileNumber").trim(),
+            userType: fd.get("userType"),
+            roomNumber: fd.get("roomNumber").trim(),
+            roomType: fd.get("roomType"),
+            feeMonth: fd.get("feeMonth").trim() || state.selectedMonth,
+            monthlyRent: Number(fd.get("monthlyRent")) || 0,
+            amountType: fd.get("amountType"),
+            amountPaid: Number(fd.get("amountPaid")) || 0,
+            paymentDate: fd.get("paymentDate").trim() || formatNowTimestamp().split(",")[0],
+            paymentMode: fd.get("paymentMode"),
+            status: fd.get("status"),
+            receipt: fd.get("receipt").trim() || "payment_receipt.jpg",
+            rating: Number(fd.get("rating")) || 5
+        });
+        switchModule("payment", "all");
+    });
 }
 
-function renderPagination(container,totalPages,current,onPage){if(!container)return;container.innerHTML="";const prev=document.createElement("button");prev.type="button";prev.textContent="‹ Prev";prev.disabled=current===1;prev.onclick=()=>onPage(current-1);container.appendChild(prev);for(let i=1;i<=totalPages;i++){const b=document.createElement("button");b.type="button";b.textContent=i;b.className=i===current?"active":"";b.onclick=()=>onPage(i);container.appendChild(b);}const next=document.createElement("button");next.type="button";next.textContent="Next ›";next.disabled=current===totalPages;next.onclick=()=>onPage(current+1);container.appendChild(next);}
+/* ==========================================================================
+   MODULE 3: EXPENSE MANAGEMENT (Monthly | Weekly 4-Week | Daily Average)
+   ========================================================================== */
+function renderExpenseModule() {
+    if (state.activeSubView === "add") return renderAddExpenseForm();
+    if (state.activeSubView === "history") return renderExpenseHistory();
 
-function showModal(title,body){document.getElementById("genericModalTitle").textContent=title;document.getElementById("genericModalBody").innerHTML=body;bootstrap.Modal.getOrCreateInstance(document.getElementById("genericModal")).show();}
+    const exp = getMonthData().expenses;
+    const totals = getMonthExpenseTotals(state.selectedMonth);
+    const monthlyRec = (exp.monthly && exp.monthly[0]) || null;
+    const weeklyList = exp.weekly || [];
+    const dailyRec = (exp.dailyAverage && exp.dailyAverage[0]) || null;
 
-monthSelect.addEventListener("change",()=>{selectedMonth=monthSelect.value;localStorage.setItem(SELECTED_MONTH_KEY,selectedMonth);state.profilePage=1;state.paymentPage=1;state.visitorPage=1;state.selectedProfileId=null;renderApp();});
-loginForm.addEventListener("submit",e=>{e.preventDefault();if(passwordInput.value===ADMIN_PASSWORD){const loginTime=Date.now();localStorage.setItem(LOGIN_STATUS_KEY,"true");localStorage.setItem(LOGIN_TIME_KEY,String(loginTime));loginError.textContent="";showMainArea();startSessionTimer(loginTime);}else{loginError.textContent="Incorrect password.";passwordInput.value="";passwordInput.focus();}});
-mobileBottomNav.querySelectorAll("button").forEach(button=>button.addEventListener("click",()=>{setModule(button.dataset.module);window.scrollTo({top:0,behavior:"smooth"});}));
-menuButton.addEventListener("click",()=>sidebar.classList.toggle("open"));
-adminButton.addEventListener("click",()=>{const open=adminMenu.classList.toggle("d-none");adminButton.setAttribute("aria-expanded",String(!open));});
-logoutButton.addEventListener("click",logoutAdmin);
-notificationButton.addEventListener("click",()=>notificationPanel.classList.toggle("d-none"));
-document.addEventListener("click",e=>{if(!adminButton.contains(e.target)&&!adminMenu.contains(e.target))adminMenu.classList.add("d-none");if(!notificationButton.contains(e.target)&&!notificationPanel.contains(e.target))notificationPanel.classList.add("d-none");});
+    const q = state.expenseSearch.trim().toLowerCase();
+    const freqFilter = state.activeSubView === "monthly" ? "monthly"
+        : state.activeSubView === "weekly" ? "weekly"
+        : state.activeSubView === "daily" ? "daily"
+        : state.expenseFreqFilter;
 
-document.addEventListener("click",e=>{const receipt=e.target.closest("[data-receipt]");if(receipt)showModal("Receipt Preview",`<div class="receipt-preview"><i class="bi bi-file-earmark-image"></i><h4>${escapeHtml(receipt.dataset.receipt)}</h4><p>Frontend demo receipt preview.</p></div>`);const doc=e.target.closest("[data-doc]");if(doc)showModal("Document Preview",`<div class="receipt-preview"><i class="bi bi-file-earmark-image"></i><h4>${escapeHtml(doc.dataset.doc)}</h4><p>Frontend demo document preview.</p></div>`);});
+    // Build Monthly Rows filtered by search/category
+    const monthlyRows = MONTHLY_EXPENSE_FIELDS.map((head, i) => ({
+        index: i + 1,
+        head,
+        amount: monthlyRec && monthlyRec.items ? (Number(monthlyRec.items[head]) || 0) : 0,
+        receipt: monthlyRec ? monthlyRec.receipt : "",
+        yourName: monthlyRec ? monthlyRec.yourName : "—"
+    })).filter(r => {
+        const matchQ = !q || r.head.toLowerCase().includes(q) || r.yourName.toLowerCase().includes(q);
+        const matchCat = !state.expenseCatFilter || r.head === state.expenseCatFilter;
+        return matchQ && matchCat;
+    });
 
-document.addEventListener("DOMContentLoaded",checkExistingSession);
+    // Build Weekly Rows
+    const filteredWeeks = weeklyList.filter(w => {
+        if (!q) return true;
+        return w.weekLabel.toLowerCase().includes(q) ||
+            (w.yourName || "").toLowerCase().includes(q) ||
+            Object.keys(w.items || {}).some(k => k.toLowerCase().includes(q));
+    });
+
+    // Build Daily Average Rows
+    const dailyRows = DAILY_EXPENSE_FIELDS.map(head => ({
+        head,
+        amount: dailyRec && dailyRec.items ? (Number(dailyRec.items[head]) || 0) : 0
+    })).filter(r => !q || r.head.toLowerCase().includes(q));
+
+    // Donut Percentages
+    const gt = totals.grandTotal || 0;
+    const mPct = gt ? Math.round((totals.monthlyTotal / gt) * 1000) / 10 : 0;
+    const wPct = gt ? Math.round((totals.weeklyTotal / gt) * 1000) / 10 : 0;
+    const dPct = gt ? Math.max(0, Math.round((100 - mPct - wPct) * 10) / 10) : 0;
+
+    // Month-wise Expense comparison (months with data + current month)
+    const comparisonMonths = AVAILABLE_MONTHS.filter(m => m === state.selectedMonth || getMonthExpenseTotals(m).grandTotal > 0);
+
+    const showMonthly = !freqFilter || freqFilter === "monthly";
+    const showWeekly = !freqFilter || freqFilter === "weekly";
+    const showDaily = !freqFilter || freqFilter === "daily";
+
+    moduleContainer.innerHTML = `
+        <div class="page-header">
+            <div class="page-title-wrap">
+                <div class="page-icon"><i class="bi bi-cash-coin"></i></div>
+                <div>
+                    <h1>Expense Management</h1>
+                    <p>Track and manage property/hostel expenses separately: Monthly, Weekly (4 Weeks) &amp; Daily Average.</p>
+                </div>
+            </div>
+            <button type="button" class="btn btn-primary rounded-3 fw-semibold" id="quickAddExpenseBtn">
+                <i class="bi bi-plus-circle me-1"></i>Add Expense
+            </button>
+        </div>
+
+        <section class="kpi-grid">
+            <article class="kpi-card highlight">
+                <div class="kpi-icon"><i class="bi bi-cash-stack"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">Total Expense</div><div class="kpi-value">${formatINR(totals.grandTotal)}</div></div>
+            </article>
+            <article class="kpi-card">
+                <div class="kpi-icon"><i class="bi bi-calendar-month"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">Monthly</div><div class="kpi-value">${formatINR(totals.monthlyTotal)}</div></div>
+            </article>
+            <article class="kpi-card">
+                <div class="kpi-icon green"><i class="bi bi-calendar-week"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">Weekly (Total)</div><div class="kpi-value">${formatINR(totals.weeklyTotal)}</div></div>
+            </article>
+            <article class="kpi-card">
+                <div class="kpi-icon amber"><i class="bi bi-calendar-day"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">Daily (Average)</div><div class="kpi-value">${formatINR(totals.dailyAvgTotal)}</div></div>
+            </article>
+            <article class="kpi-card">
+                <div class="kpi-icon"><i class="bi bi-bar-chart-fill"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">Selected Month</div><div class="kpi-value month-val">${escapeHtml(state.selectedMonth)}</div></div>
+            </article>
+        </section>
+
+        <section class="filter-card">
+            <div class="search-box">
+                <i class="bi bi-search"></i>
+                <input type="search" id="expenseSearchInput" value="${escapeHtml(state.expenseSearch)}" placeholder="Search by expense head, week, or your name...">
+            </div>
+            <select id="expenseCatFilter" class="filter-select">
+                <option value="">All Monthly Categories</option>
+                ${MONTHLY_EXPENSE_FIELDS.map(c => `<option value="${escapeHtml(c)}" ${state.expenseCatFilter === c ? "selected" : ""}>${escapeHtml(c)}</option>`).join("")}
+            </select>
+            <select id="expenseFreqFilter" class="filter-select">
+                <option value="">All Frequency</option>
+                <option value="monthly" ${freqFilter === "monthly" ? "selected" : ""}>Monthly Expense</option>
+                <option value="weekly" ${freqFilter === "weekly" ? "selected" : ""}>Weekly Expense</option>
+                <option value="daily" ${freqFilter === "daily" ? "selected" : ""}>Daily Expense (Average)</option>
+            </select>
+            <button type="button" class="btn-reset" id="expenseResetBtn"><i class="bi bi-arrow-clockwise"></i> Reset</button>
+        </section>
+
+        <div class="expense-overview-grid">
+            <!-- COLUMN 1: MONTHLY EXPENSE -->
+            ${showMonthly ? `
+                <article class="panel-card">
+                    <div class="panel-header">
+                        <h3 class="panel-title"><i class="bi bi-calendar-month"></i> Monthly Expense (${escapeHtml(state.selectedMonth)})</h3>
+                        ${monthlyRec ? `<span class="badge-soft badge-room">By: ${escapeHtml(monthlyRec.yourName)}</span>` : ""}
+                    </div>
+                    <div class="table-wrap">
+                        <div class="table-responsive-custom">
+                            <table class="data-table">
+                                <thead><tr><th>#</th><th>Expense Head</th><th class="text-end">Amount (₹)</th><th class="text-center">Receipt</th></tr></thead>
+                                <tbody>
+                                    ${monthlyRows.map(r => `
+                                        <tr>
+                                            <td>${r.index}</td>
+                                            <td>${escapeHtml(r.head)}</td>
+                                            <td class="text-end fw-semibold">${formatINR(r.amount)}</td>
+                                            <td class="text-center">
+                                                <button type="button" class="action-icon-btn" data-exp-receipt="${escapeHtml(r.head)}" data-exp-file="${escapeHtml(r.receipt || "monthly_bill.pdf")}" data-exp-amt="${r.amount}" data-exp-by="${escapeHtml(r.yourName)}">
+                                                    <i class="bi bi-file-earmark-image"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `).join("")}
+                                </tbody>
+                                <tfoot>
+                                    <tr><td colspan="2">Total Monthly Expense</td><td class="text-end">${formatINR(totals.monthlyTotal)}</td><td></td></tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </article>
+            ` : ""}
+
+            <!-- COLUMN 2: WEEKLY (4 WEEKS) + DAILY AVERAGE -->
+            <div class="d-flex flex-column gap-3">
+                ${showWeekly ? `
+                    <article class="panel-card">
+                        <div class="panel-header">
+                            <h3 class="panel-title"><i class="bi bi-calendar-week"></i> Weekly Expense (${escapeHtml(state.selectedMonth)})</h3>
+                            <span class="badge-soft badge-paid">4 Weeks Combined</span>
+                        </div>
+                        <div class="table-wrap">
+                            <div class="table-responsive-custom">
+                                <table class="data-table">
+                                    <thead><tr><th>Week</th><th>Date Range</th><th class="text-end">Total (₹)</th><th class="text-center">View</th></tr></thead>
+                                    <tbody>
+                                        ${filteredWeeks.length ? filteredWeeks.map(w => {
+                                            const wSum = sumObjectValues(w.items);
+                                            return `
+                                                <tr>
+                                                    <td class="fw-bold">${escapeHtml(w.weekLabel)}</td>
+                                                    <td class="small">${escapeHtml(w.dateRange || "—")}</td>
+                                                    <td class="text-end fw-bold">${formatINR(wSum)}</td>
+                                                    <td class="text-center">
+                                                        <button type="button" class="action-icon-btn" data-view-week="${escapeHtml(w.id)}" title="View Weekly Breakdown">
+                                                            <i class="bi bi-eye"></i>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            `;
+                                        }).join("") : `<tr><td colspan="4" class="empty-cell">No weekly records for ${escapeHtml(state.selectedMonth)}.</td></tr>`}
+                                    </tbody>
+                                    <tfoot>
+                                        <tr><td colspan="2">Combined Monthly Weekly Total</td><td class="text-end">${formatINR(totals.weeklyTotal)}</td><td></td></tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+                    </article>
+                ` : ""}
+
+                ${showDaily ? `
+                    <article class="panel-card">
+                        <div class="panel-header">
+                            <h3 class="panel-title"><i class="bi bi-calendar-day"></i> Daily Expense (Average – ${escapeHtml(state.selectedMonth)})</h3>
+                            ${dailyRec ? `<button type="button" class="action-icon-btn" data-exp-receipt="Daily Food Service Bill / Receipt" data-exp-file="${escapeHtml(dailyRec.receipt || "daily_avg.jpg")}" data-exp-amt="${totals.dailyAvgTotal}" data-exp-by="${escapeHtml(dailyRec.yourName)}" title="View Receipt"><i class="bi bi-file-earmark-image"></i></button>` : ""}
+                        </div>
+                        <div class="p-3 rounded-3 mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2" style="background:var(--blue-50);border:1px solid var(--border-color);">
+                            <div>
+                                <div class="small text-muted fw-semibold">Average Daily Expense</div>
+                                <div class="fs-4 fw-bold text-primary">${formatINR(totals.dailyAvgTotal)}</div>
+                            </div>
+                            <div class="small text-muted" style="max-width:240px;">
+                                <i class="bi bi-info-circle-fill text-primary me-1"></i>
+                                ${escapeHtml(dailyRec && dailyRec.note ? dailyRec.note : "Daily average operational expense for " + state.selectedMonth + ".")}
+                            </div>
+                        </div>
+                        <div class="detail-list">
+                            ${dailyRows.map(d => `
+                                <div class="detail-row">
+                                    <span class="detail-label">${escapeHtml(d.head)}</span>
+                                    <span class="detail-val">${formatINR(d.amount)}</span>
+                                </div>
+                            `).join("")}
+                            ${dailyRec ? `<div class="detail-row"><span class="detail-label">Recorded By</span><span class="detail-val text-primary">${escapeHtml(dailyRec.yourName)}</span></div>` : ""}
+                        </div>
+                    </article>
+                ` : ""}
+            </div>
+
+            <!-- COLUMN 3: SUMMARY DONUT & MONTH COMPARISON -->
+            <div class="d-flex flex-column gap-3">
+                <article class="panel-card">
+                    <h3 class="panel-title mb-3"><i class="bi bi-pie-chart-fill"></i> Expense Summary</h3>
+                    <div class="donut-layout">
+                        <div class="donut-chart" style="background: conic-gradient(#1a66e8 0 ${mPct}%, #22c55e ${mPct}% ${mPct + wPct}%, #f59e0b ${mPct + wPct}% 100%);">
+                            <div class="donut-center">
+                                <strong>${formatINR(gt)}</strong>
+                                <span>Total</span>
+                            </div>
+                        </div>
+                        <div class="chart-legend w-100">
+                            <div class="legend-item justify-content-between"><span><span class="legend-dot d-inline-block me-2" style="background:#1a66e8;"></span>Monthly Expense</span><strong>${formatINR(totals.monthlyTotal)} (${mPct}%)</strong></div>
+                            <div class="legend-item justify-content-between"><span><span class="legend-dot d-inline-block me-2" style="background:#22c55e;"></span>Weekly Expense</span><strong>${formatINR(totals.weeklyTotal)} (${wPct}%)</strong></div>
+                            <div class="legend-item justify-content-between"><span><span class="legend-dot d-inline-block me-2" style="background:#f59e0b;"></span>Daily Expense (Avg)</span><strong>${formatINR(totals.dailyAvgTotal)} (${dPct}%)</strong></div>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="panel-card">
+                    <h3 class="panel-title mb-3"><i class="bi bi-bar-chart-line-fill"></i> Month-wise Expense</h3>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead><tr><th>Month</th><th class="text-end">Total Expense (₹)</th></tr></thead>
+                            <tbody>
+                                ${comparisonMonths.map(m => `
+                                    <tr class="${m === state.selectedMonth ? "selected-row" : ""}">
+                                        <td class="fw-semibold">${escapeHtml(m)}</td>
+                                        <td class="text-end fw-bold">${formatINR(getMonthExpenseTotals(m).grandTotal)}</td>
+                                    </tr>
+                                `).join("")}
+                            </tbody>
+                        </table>
+                    </div>
+                </article>
+            </div>
+        </div>
+    `;
+
+    // Bind events
+    document.getElementById("quickAddExpenseBtn").addEventListener("click", () => switchModule("expense", "add"));
+    document.getElementById("expenseSearchInput").addEventListener("input", e => { state.expenseSearch = e.target.value; renderExpenseModule(); });
+    document.getElementById("expenseCatFilter").addEventListener("change", e => { state.expenseCatFilter = e.target.value; renderExpenseModule(); });
+    document.getElementById("expenseFreqFilter").addEventListener("change", e => {
+        state.expenseFreqFilter = e.target.value;
+        state.activeSubView = "overview";
+        renderApp();
+    });
+    document.getElementById("expenseResetBtn").addEventListener("click", () => {
+        state.expenseSearch = ""; state.expenseCatFilter = ""; state.expenseFreqFilter = "";
+        state.activeSubView = "overview";
+        renderApp();
+    });
+
+    moduleContainer.querySelectorAll("[data-view-week]").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const w = weeklyList.find(item => item.id === btn.dataset.viewWeek);
+            if (!w) return;
+            const total = sumObjectValues(w.items);
+            openModal(`${w.weekLabel} Expense Breakdown (${state.selectedMonth})`, `
+                <div class="mb-3 d-flex justify-content-between small text-muted">
+                    <span>Date Range: <strong>${escapeHtml(w.dateRange)}</strong></span>
+                    <span>Your Name: <strong>${escapeHtml(w.yourName)}</strong></span>
+                </div>
+                <div class="detail-list mb-3">
+                    ${WEEKLY_EXPENSE_FIELDS.map(f => `
+                        <div class="detail-row">
+                            <span class="detail-label">${escapeHtml(f)}</span>
+                            <span class="detail-val">${formatINR(w.items[f])}</span>
+                        </div>
+                    `).join("")}
+                    <div class="detail-row pt-2 border-top">
+                        <span class="detail-label text-dark fw-bold">Total ${escapeHtml(w.weekLabel)} Expense</span>
+                        <span class="detail-val text-primary fs-6">${formatINR(total)}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Weekly Food Service Bill / Receipt</span>
+                        <span class="detail-val">${escapeHtml(w.receipt || "Uploaded")}</span>
+                    </div>
+                </div>
+            `);
+        });
+    });
+
+    moduleContainer.querySelectorAll("[data-exp-receipt]").forEach(btn => {
+        btn.addEventListener("click", () => {
+            openModal("Expense Bill / Receipt", `
+                <div class="detail-list">
+                    <div class="detail-row"><span class="detail-label">Expense Head</span><span class="detail-val">${escapeHtml(btn.dataset.expReceipt)}</span></div>
+                    <div class="detail-row"><span class="detail-label">Amount</span><span class="detail-val text-primary fw-bold">${formatINR(btn.dataset.expAmt)}</span></div>
+                    <div class="detail-row"><span class="detail-label">Recorded By</span><span class="detail-val">${escapeHtml(btn.dataset.expBy)}</span></div>
+                    <div class="detail-row"><span class="detail-label">Month</span><span class="detail-val">${escapeHtml(state.selectedMonth)}</span></div>
+                    <div class="detail-row"><span class="detail-label">Receipt File</span><span class="detail-val">${escapeHtml(btn.dataset.expFile)}</span></div>
+                </div>
+            `);
+        });
+    });
+}
+
+function renderAddExpenseForm() {
+    const freq = state.addExpenseFreq;
+    const fields = freq === "monthly" ? MONTHLY_EXPENSE_FIELDS : freq === "weekly" ? WEEKLY_EXPENSE_FIELDS : DAILY_EXPENSE_FIELDS;
+
+    moduleContainer.innerHTML = `
+        <div class="page-header">
+            <div class="page-title-wrap">
+                <div class="page-icon"><i class="bi bi-plus-circle-fill"></i></div>
+                <div><h1>Add / Update Expense</h1><p>Enter ${escapeHtml(freq)} expense data for ${escapeHtml(state.selectedMonth)}.</p></div>
+            </div>
+            <button type="button" class="btn btn-outline-primary rounded-3" id="backToExpOverviewBtn"><i class="bi bi-arrow-left me-1"></i>Back to Expenses</button>
+        </div>
+
+        <div class="panel-card mb-3">
+            <div class="btn-group w-100" role="group">
+                <button type="button" class="btn ${freq === "monthly" ? "btn-primary" : "btn-outline-primary"}" data-exp-freq="monthly">Monthly Expense</button>
+                <button type="button" class="btn ${freq === "weekly" ? "btn-primary" : "btn-outline-primary"}" data-exp-freq="weekly">Weekly Expense</button>
+                <button type="button" class="btn ${freq === "daily" ? "btn-primary" : "btn-outline-primary"}" data-exp-freq="daily">Daily Expense (Average)</button>
+            </div>
+        </div>
+
+        <form id="addExpenseForm" class="panel-card">
+            <div class="row g-3 mb-3">
+                <div class="col-md-4"><label class="form-label small fw-semibold">Your Name *</label><input name="yourName" class="form-control" value="Dev Gupta" required></div>
+                ${freq === "weekly" ? `
+                    <div class="col-md-4">
+                        <label class="form-label small fw-semibold">Select Week *</label>
+                        <select name="weekLabel" class="form-select"><option>Week 1</option><option>Week 2</option><option>Week 3</option><option>Week 4</option></select>
+                    </div>
+                    <div class="col-md-4"><label class="form-label small fw-semibold">Date Range</label><input name="dateRange" class="form-control" placeholder="e.g. 01 Dec – 07 Dec"></div>
+                ` : `
+                    <div class="col-md-8"><label class="form-label small fw-semibold">${freq === "monthly" ? "Monthly Bill / Receipt" : "Daily Food Service Bill / Receipt"}</label><input name="receipt" class="form-control" placeholder="bill_receipt.pdf"></div>
+                `}
+                ${freq === "weekly" ? `<div class="col-md-6"><label class="form-label small fw-semibold">Weekly Food Service Bill / Receipt</label><input name="receipt" class="form-control" placeholder="weekly_bill.jpg"></div>` : ""}
+                ${freq === "daily" ? `<div class="col-md-12"><label class="form-label small fw-semibold">Daily Average Note</label><input name="note" class="form-control" value="Average daily operational expense for ${escapeHtml(state.selectedMonth)}."></div>` : ""}
+            </div>
+
+            <h6 class="fw-bold text-primary mb-3">Enter Amounts (₹)</h6>
+            <div class="row g-3">
+                ${fields.map((f, idx) => `
+                    <div class="col-sm-6 col-md-4">
+                        <label class="form-label small fw-semibold">${escapeHtml(f)}</label>
+                        <input type="number" min="0" name="item_${idx}" class="form-control" value="0">
+                    </div>
+                `).join("")}
+            </div>
+
+            <div class="d-flex gap-2 justify-content-end mt-4">
+                <button type="button" class="btn btn-light border rounded-3 px-4" id="cancelExpFormBtn">Cancel</button>
+                <button type="submit" class="btn btn-primary rounded-3 px-4 fw-semibold"><i class="bi bi-check2-circle me-1"></i>Save Expense</button>
+            </div>
+        </form>
+    `;
+
+    document.getElementById("backToExpOverviewBtn").addEventListener("click", () => switchModule("expense", "overview"));
+    document.getElementById("cancelExpFormBtn").addEventListener("click", () => switchModule("expense", "overview"));
+    moduleContainer.querySelectorAll("[data-exp-freq]").forEach(btn => {
+        btn.addEventListener("click", () => {
+            state.addExpenseFreq = btn.dataset.expFreq;
+            renderAddExpenseForm();
+        });
+    });
+
+    document.getElementById("addExpenseForm").addEventListener("submit", e => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const items = {};
+        fields.forEach((f, idx) => { items[f] = Number(fd.get("item_" + idx)) || 0; });
+        const exp = getMonthData().expenses;
+
+        if (freq === "monthly") {
+            exp.monthly = [{
+                id: "EXP-M-" + Date.now(),
+                yourName: fd.get("yourName").trim(),
+                date: formatNowTimestamp().split(",")[0],
+                receipt: fd.get("receipt").trim() || "monthly_bill.pdf",
+                items
+            }];
+        } else if (freq === "weekly") {
+            const wk = fd.get("weekLabel");
+            const rec = {
+                id: "EXP-W-" + Date.now(),
+                weekLabel: wk,
+                dateRange: fd.get("dateRange").trim() || wk,
+                yourName: fd.get("yourName").trim(),
+                receipt: fd.get("receipt").trim() || "weekly_bill.jpg",
+                items
+            };
+            const existingIdx = exp.weekly.findIndex(w => w.weekLabel === wk);
+            if (existingIdx >= 0) exp.weekly[existingIdx] = rec;
+            else exp.weekly.push(rec);
+        } else {
+            exp.dailyAverage = [{
+                id: "EXP-D-" + Date.now(),
+                yourName: fd.get("yourName").trim(),
+                note: fd.get("note").trim(),
+                receipt: fd.get("receipt").trim() || "daily_avg.jpg",
+                items
+            }];
+        }
+        switchModule("expense", "overview");
+    });
+}
+
+function renderExpenseHistory() {
+    const exp = getMonthData().expenses;
+    const rows = [];
+    (exp.monthly || []).forEach(r => rows.push({ freq: "Monthly", label: "Monthly Combined Bills", by: r.yourName, total: sumObjectValues(r.items), receipt: r.receipt }));
+    (exp.weekly || []).forEach(w => rows.push({ freq: "Weekly", label: `${w.weekLabel} (${w.dateRange})`, by: w.yourName, total: sumObjectValues(w.items), receipt: w.receipt }));
+    (exp.dailyAverage || []).forEach(d => rows.push({ freq: "Daily Average", label: "Daily Average Operational", by: d.yourName, total: sumObjectValues(d.items), receipt: d.receipt }));
+
+    moduleContainer.innerHTML = `
+        <div class="page-header">
+            <div class="page-title-wrap">
+                <div class="page-icon"><i class="bi bi-clock-history"></i></div>
+                <div><h1>Expense History</h1><p>All recorded Monthly, Weekly, and Daily Average entries for ${escapeHtml(state.selectedMonth)}.</p></div>
+            </div>
+            <button type="button" class="btn btn-outline-primary rounded-3" id="backFromExpHistory"><i class="bi bi-arrow-left me-1"></i>Expense Overview</button>
+        </div>
+        <div class="panel-card">
+            <div class="table-wrap">
+                <div class="table-responsive-custom">
+                    <table class="data-table">
+                        <thead><tr><th>#</th><th>Frequency</th><th>Description</th><th>Recorded By</th><th class="text-end">Total Amount</th><th>Receipt</th></tr></thead>
+                        <tbody>
+                            ${rows.length ? rows.map((r, i) => `
+                                <tr>
+                                    <td>${i + 1}</td>
+                                    <td><span class="badge-soft badge-room">${escapeHtml(r.freq)}</span></td>
+                                    <td class="fw-semibold">${escapeHtml(r.label)}</td>
+                                    <td>${escapeHtml(r.by)}</td>
+                                    <td class="text-end fw-bold">${formatINR(r.total)}</td>
+                                    <td>${escapeHtml(r.receipt || "—")}</td>
+                                </tr>
+                            `).join("") : `<tr><td colspan="6" class="empty-cell">No expense history found for ${escapeHtml(state.selectedMonth)}.</td></tr>`}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+    document.getElementById("backFromExpHistory").addEventListener("click", () => switchModule("expense", "overview"));
+}
+
+/* ==========================================================================
+   MODULE 4: MORE HUB, BEDS DETAILS & VISITOR ENQUIRIES
+   ========================================================================== */
+function renderMoreHub() {
+    const data = getMonthData();
+    const rooms = (data.beds && data.beds.rooms) || [];
+    const totalBeds = rooms.reduce((s, r) => s + r.totalBeds, 0);
+    const occBeds = rooms.reduce((s, r) => s + r.occupiedBeds, 0);
+    const emptyBeds = Math.max(0, totalBeds - occBeds);
+    const occPct = totalBeds ? Math.round((occBeds / totalBeds) * 100) : 0;
+    const visitors = data.visitors || [];
+    const roomReq = visitors.filter(v => v.roomRequired === "Yes").length;
+
+    moduleContainer.innerHTML = `
+        <div class="page-header">
+            <div class="page-title-wrap">
+                <div class="page-icon"><i class="bi bi-grid-fill"></i></div>
+                <div>
+                    <h1>More Management Options</h1>
+                    <p>Access Beds Details, Visitor Enquiries, and additional reports for ${escapeHtml(state.selectedMonth)}.</p>
+                </div>
+            </div>
+        </div>
+
+        <section class="more-hub-grid">
+            <button type="button" class="more-feature-card" id="openBedsDetailsBtn">
+                <div class="d-flex justify-content-between align-items-center w-100">
+                    <div class="more-feature-icon"><i class="bi bi-building-fill"></i></div>
+                    <span class="badge-soft badge-room">${occPct}% Occupied</span>
+                </div>
+                <div>
+                    <h4 class="fw-bold text-dark mb-1">Beds Details</h4>
+                    <p class="small text-muted mb-2">View total beds, occupied/empty beds, floor-wise, room-wise &amp; seater-wise occupancy.</p>
+                </div>
+                <div class="d-flex gap-3 small fw-semibold text-primary mt-auto">
+                    <span>Total: ${totalBeds}</span>
+                    <span>Occupied: ${occBeds}</span>
+                    <span>Empty: ${emptyBeds}</span>
+                </div>
+            </button>
+
+            <button type="button" class="more-feature-card" id="openVisitorEnquiriesBtn">
+                <div class="d-flex justify-content-between align-items-center w-100">
+                    <div class="more-feature-icon" style="background:var(--green-100);color:var(--green-600);"><i class="bi bi-people-fill"></i></div>
+                    <span class="badge-soft badge-paid">${visitors.length} Visitors</span>
+                </div>
+                <div>
+                    <h4 class="fw-bold text-dark mb-1">Visitor Enquiries</h4>
+                    <p class="small text-muted mb-2">Track all visitors, room required status, referral sources, charts and enquiry records.</p>
+                </div>
+                <div class="d-flex gap-3 small fw-semibold text-success mt-auto">
+                    <span>Room Required: ${roomReq}</span>
+                    <span>No Room: ${visitors.length - roomReq}</span>
+                </div>
+            </button>
+        </section>
+    `;
+
+    document.getElementById("openBedsDetailsBtn").addEventListener("click", () => switchModule("more", "beds"));
+    document.getElementById("openVisitorEnquiriesBtn").addEventListener("click", () => switchModule("more", "visitors"));
+}
+
+/* ================= BEDS DETAILS DASHBOARD ================= */
+function renderBedsModule() {
+    const rooms = (getMonthData().beds && getMonthData().beds.rooms) || [];
+    const totalBeds = rooms.reduce((s, r) => s + r.totalBeds, 0);
+    const occupiedBeds = rooms.reduce((s, r) => s + r.occupiedBeds, 0);
+    const emptyBeds = Math.max(0, totalBeds - occupiedBeds);
+    const totalStudents = rooms.reduce((s, r) => s + (r.students ? r.students.length : r.occupiedBeds), 0);
+    const occPct = totalBeds ? Math.round((occupiedBeds / totalBeds) * 100) : 0;
+
+    const floors = ["Ground Floor", "1st Floor", "2nd Floor", "3rd Floor"];
+    const seaters = ["1 Seater", "2 Seater", "3 Seater", "4 Seater"];
+
+    const floorStats = floors.map(fl => {
+        const list = rooms.filter(r => r.floor === fl);
+        const tb = list.reduce((s, r) => s + r.totalBeds, 0);
+        const ob = list.reduce((s, r) => s + r.occupiedBeds, 0);
+        return { floor: fl, rooms: list.length, totalBeds: tb, occupied: ob, empty: tb - ob, pct: tb ? Math.round((ob / tb) * 100) : 0 };
+    });
+
+    const seaterStats = seaters.map(st => {
+        const list = rooms.filter(r => r.roomType === st);
+        const tb = list.reduce((s, r) => s + r.totalBeds, 0);
+        const ob = list.reduce((s, r) => s + r.occupiedBeds, 0);
+        return { seater: st, rooms: list.length, totalBeds: tb, occupied: ob, empty: tb - ob };
+    });
+
+    const q = state.bedsSearch.trim().toLowerCase();
+    const filteredRooms = rooms.filter(r => {
+        const status = r.occupiedBeds === 0 ? "Empty" : r.occupiedBeds >= r.totalBeds ? "Full" : "Partial";
+        const matchQ = !q || r.roomNumber.toLowerCase().includes(q) || r.floor.toLowerCase().includes(q) ||
+            (r.students || []).some(st => st.toLowerCase().includes(q));
+        const matchFloor = !state.bedsFloorFilter || r.floor === state.bedsFloorFilter;
+        const matchSeater = !state.bedsSeaterFilter || r.roomType === state.bedsSeaterFilter;
+        const matchStatus = !state.bedsStatusFilter || status === state.bedsStatusFilter;
+        return matchQ && matchFloor && matchSeater && matchStatus;
+    });
+
+    moduleContainer.innerHTML = `
+        <div class="page-header">
+            <div class="page-title-wrap">
+                <div class="page-icon"><i class="bi bi-building-fill"></i></div>
+                <div>
+                    <h1>Beds Details Dashboard</h1>
+                    <p>Floor-wise, room-wise &amp; seater-wise bed availability for ${escapeHtml(state.selectedMonth)}.</p>
+                </div>
+            </div>
+            <button type="button" class="btn btn-outline-primary rounded-3" id="backToMoreFromBeds"><i class="bi bi-arrow-left me-1"></i>Back to More</button>
+        </div>
+
+        <section class="kpi-grid">
+            <article class="kpi-card highlight">
+                <div class="kpi-icon"><i class="bi bi-grid-3x3-gap-fill"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">Total Beds</div><div class="kpi-value">${totalBeds}</div></div>
+            </article>
+            <article class="kpi-card">
+                <div class="kpi-icon purple"><i class="bi bi-people-fill"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">Total Students</div><div class="kpi-value">${totalStudents}</div></div>
+            </article>
+            <article class="kpi-card">
+                <div class="kpi-icon green"><i class="bi bi-person-check-fill"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">Occupied Beds</div><div class="kpi-value">${occupiedBeds}</div></div>
+            </article>
+            <article class="kpi-card">
+                <div class="kpi-icon amber"><i class="bi bi-door-open-fill"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">Empty Beds</div><div class="kpi-value">${emptyBeds}</div></div>
+            </article>
+            <article class="kpi-card">
+                <div class="kpi-icon"><i class="bi bi-pie-chart-fill"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">Occupancy %</div><div class="kpi-value">${occPct}%</div></div>
+            </article>
+        </section>
+
+        <!-- Floor-wise Summary -->
+        <section class="panel-card mb-3">
+            <div class="panel-header">
+                <h3 class="panel-title"><i class="bi bi-layers-fill"></i> Floor-wise Summary</h3>
+                <span class="small text-muted">Click a floor to filter rooms</span>
+            </div>
+            <div class="floor-grid">
+                ${floorStats.map(f => `
+                    <div class="stat-tile ${state.bedsFloorFilter === f.floor ? "active-filter" : ""}" data-filter-floor="${escapeHtml(f.floor)}">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <strong class="small">${escapeHtml(f.floor)}</strong>
+                            <span class="badge-soft badge-room">${f.pct}%</span>
+                        </div>
+                        <div class="small text-muted mb-2">${f.rooms} Rooms &bull; ${f.totalBeds} Beds</div>
+                        <div class="h-bar-track mb-2"><div class="h-bar-fill" style="width:${f.pct}%"></div></div>
+                        <div class="d-flex justify-content-between small fw-semibold">
+                            <span class="text-success">Occ: ${f.occupied}</span>
+                            <span class="text-warning">Empty: ${f.empty}</span>
+                        </div>
+                    </div>
+                `).join("")}
+            </div>
+        </section>
+
+        <!-- Seater-wise Summary -->
+        <section class="panel-card mb-3">
+            <div class="panel-header">
+                <h3 class="panel-title"><i class="bi bi-door-closed-fill"></i> Seater-wise Summary</h3>
+                <span class="small text-muted">Click a seater type to filter</span>
+            </div>
+            <div class="seater-grid">
+                ${seaterStats.map(s => `
+                    <div class="stat-tile ${state.bedsSeaterFilter === s.seater ? "active-filter" : ""}" data-filter-seater="${escapeHtml(s.seater)}">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <strong class="small">${escapeHtml(s.seater)}</strong>
+                            <span class="badge-soft badge-student">${s.rooms} Rooms</span>
+                        </div>
+                        <div class="small text-muted">Total Beds: <strong>${s.totalBeds}</strong></div>
+                        <div class="d-flex justify-content-between small fw-semibold mt-1">
+                            <span class="text-primary">Occupied: ${s.occupied}</span>
+                            <span class="text-danger">Empty: ${s.empty}</span>
+                        </div>
+                    </div>
+                `).join("")}
+            </div>
+        </section>
+
+        <!-- Room-wise Filter & Table -->
+        <section class="filter-card">
+            <div class="search-box">
+                <i class="bi bi-search"></i>
+                <input type="search" id="bedsSearchInput" value="${escapeHtml(state.bedsSearch)}" placeholder="Search by room number, floor, or student name...">
+            </div>
+            <select id="bedsFloorFilter" class="filter-select">
+                <option value="">All Floors</option>
+                ${floors.map(f => `<option value="${f}" ${state.bedsFloorFilter === f ? "selected" : ""}>${f}</option>`).join("")}
+            </select>
+            <select id="bedsSeaterFilter" class="filter-select">
+                <option value="">All Seaters</option>
+                ${seaters.map(s => `<option value="${s}" ${state.bedsSeaterFilter === s ? "selected" : ""}>${s}</option>`).join("")}
+            </select>
+            <select id="bedsStatusFilter" class="filter-select">
+                <option value="">All Status</option>
+                <option value="Full" ${state.bedsStatusFilter === "Full" ? "selected" : ""}>Full</option>
+                <option value="Partial" ${state.bedsStatusFilter === "Partial" ? "selected" : ""}>Partial</option>
+                <option value="Empty" ${state.bedsStatusFilter === "Empty" ? "selected" : ""}>Empty</option>
+            </select>
+            <button type="button" class="btn-reset" id="bedsResetBtn"><i class="bi bi-arrow-clockwise"></i> Reset</button>
+        </section>
+
+        <div class="panel-card">
+            <h3 class="panel-title mb-3"><i class="bi bi-table"></i> Room-wise Beds Data (${escapeHtml(state.selectedMonth)})</h3>
+            <div class="table-wrap desktop-only-table">
+                <div class="table-responsive-custom">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Room No.</th>
+                                <th>Floor</th>
+                                <th>Room Type</th>
+                                <th>Total Beds</th>
+                                <th>Occupied</th>
+                                <th>Empty</th>
+                                <th>Status</th>
+                                <th>Beds Visual</th>
+                                <th>Students</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${filteredRooms.length ? filteredRooms.map(r => {
+                                const emp = Math.max(0, r.totalBeds - r.occupiedBeds);
+                                const status = r.occupiedBeds === 0 ? "Empty" : emp === 0 ? "Full" : "Partial";
+                                const badgeCls = status === "Full" ? "badge-paid" : status === "Partial" ? "badge-partial" : "badge-pending";
+                                const dots = Array.from({ length: r.totalBeds }, (_, i) => `<span class="bed-dot ${i < r.occupiedBeds ? "occ" : "emp"}"></span>`).join("");
+                                return `
+                                    <tr>
+                                        <td class="fw-bold">${escapeHtml(r.roomNumber)}</td>
+                                        <td>${escapeHtml(r.floor)}</td>
+                                        <td><span class="badge-soft badge-room">${escapeHtml(r.roomType)}</span></td>
+                                        <td class="fw-semibold">${r.totalBeds}</td>
+                                        <td class="text-success fw-bold">${r.occupiedBeds}</td>
+                                        <td class="text-danger fw-bold">${emp}</td>
+                                        <td><span class="badge-soft ${badgeCls}">${status}</span></td>
+                                        <td><div class="bed-dots">${dots}</div></td>
+                                        <td class="small">${r.students && r.students.length ? escapeHtml(r.students.join(", ")) : '<span class="text-muted">Vacant</span>'}</td>
+                                    </tr>
+                                `;
+                            }).join("") : `<tr><td colspan="9" class="empty-cell">No room/bed data found for ${escapeHtml(state.selectedMonth)}.</td></tr>`}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Mobile Room Cards -->
+            <div class="mobile-cards-list">
+                ${filteredRooms.length ? filteredRooms.map(r => {
+                    const emp = Math.max(0, r.totalBeds - r.occupiedBeds);
+                    const status = r.occupiedBeds === 0 ? "Empty" : emp === 0 ? "Full" : "Partial";
+                    const badgeCls = status === "Full" ? "badge-paid" : status === "Partial" ? "badge-partial" : "badge-pending";
+                    return `
+                        <div class="mobile-record-card">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <strong>${escapeHtml(r.roomNumber)} &bull; ${escapeHtml(r.roomType)}</strong>
+                                <span class="badge-soft ${badgeCls}">${status}</span>
+                            </div>
+                            <div class="small text-muted mb-1">${escapeHtml(r.floor)} &bull; Total: ${r.totalBeds} | Occ: ${r.occupiedBeds} | Empty: ${emp}</div>
+                            <div class="small"><strong>Students:</strong> ${r.students && r.students.length ? escapeHtml(r.students.join(", ")) : "Vacant"}</div>
+                        </div>
+                    `;
+                }).join("") : `<div class="text-center text-muted py-4">No room/bed data found for ${escapeHtml(state.selectedMonth)}.</div>`}
+            </div>
+        </div>
+    `;
+
+    // Bind events
+    document.getElementById("backToMoreFromBeds").addEventListener("click", () => switchModule("more", "hub"));
+    document.getElementById("bedsSearchInput").addEventListener("input", e => { state.bedsSearch = e.target.value; renderBedsModule(); });
+    document.getElementById("bedsFloorFilter").addEventListener("change", e => { state.bedsFloorFilter = e.target.value; renderBedsModule(); });
+    document.getElementById("bedsSeaterFilter").addEventListener("change", e => { state.bedsSeaterFilter = e.target.value; renderBedsModule(); });
+    document.getElementById("bedsStatusFilter").addEventListener("change", e => { state.bedsStatusFilter = e.target.value; renderBedsModule(); });
+    document.getElementById("bedsResetBtn").addEventListener("click", () => {
+        state.bedsSearch = ""; state.bedsFloorFilter = ""; state.bedsSeaterFilter = ""; state.bedsStatusFilter = "";
+        renderBedsModule();
+    });
+
+    moduleContainer.querySelectorAll("[data-filter-floor]").forEach(tile => {
+        tile.addEventListener("click", () => {
+            state.bedsFloorFilter = state.bedsFloorFilter === tile.dataset.filterFloor ? "" : tile.dataset.filterFloor;
+            renderBedsModule();
+        });
+    });
+    moduleContainer.querySelectorAll("[data-filter-seater]").forEach(tile => {
+        tile.addEventListener("click", () => {
+            state.bedsSeaterFilter = state.bedsSeaterFilter === tile.dataset.filterSeater ? "" : tile.dataset.filterSeater;
+            renderBedsModule();
+        });
+    });
+}
+
+/* ================= VISITOR ENQUIRIES (PRESERVED & UPDATED) ================= */
+function renderVisitorsModule() {
+    const records = getMonthData().visitors || [];
+    const yesCount = records.filter(r => r.roomRequired === "Yes").length;
+    const noCount = records.filter(r => r.roomRequired === "No").length;
+    const total = records.length;
+    const yesPct = total ? Math.round((yesCount / total) * 100) : 0;
+    const noPct = total ? 100 - yesPct : 0;
+
+    const sources = [...new Set(records.map(r => r.source))].sort();
+    const q = state.visitorSearch.trim().toLowerCase();
+    const filtered = records.filter(r => {
+        const matchQ = !q || r.fullName.toLowerCase().includes(q) || r.mobileNumber.includes(q);
+        const matchRoom = !state.visitorRoomFilter || r.roomRequired === state.visitorRoomFilter;
+        const matchSrc = !state.visitorSourceFilter || r.source === state.visitorSourceFilter;
+        return matchQ && matchRoom && matchSrc;
+    });
+
+    const PAGE_SIZE = 5;
+    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    if (state.visitorPage > totalPages) state.visitorPage = totalPages;
+    const start = (state.visitorPage - 1) * PAGE_SIZE;
+    const pageRecords = filtered.slice(start, start + PAGE_SIZE);
+
+    const chartMonths = AVAILABLE_MONTHS.slice(0, 3);
+    const maxVisitors = Math.max(1, ...chartMonths.map(m => (getMonthData(m).visitors || []).length));
+
+    moduleContainer.innerHTML = `
+        <div class="page-header">
+            <div class="page-title-wrap">
+                <div class="page-icon"><i class="bi bi-people-fill"></i></div>
+                <div>
+                    <h1>Visitor Enquiries Report</h1>
+                    <p>Track all visitors &amp; room enquiries month-wise.</p>
+                </div>
+            </div>
+            <button type="button" class="btn btn-outline-primary rounded-3" id="backToMoreFromVisitors"><i class="bi bi-arrow-left me-1"></i>Back to More</button>
+        </div>
+
+        <section class="kpi-grid cols-4">
+            <article class="kpi-card highlight">
+                <div class="kpi-icon"><i class="bi bi-people-fill"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">Total Visitors</div><div class="kpi-value">${total}</div></div>
+            </article>
+            <article class="kpi-card">
+                <div class="kpi-icon green"><i class="bi bi-check-circle-fill"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">Room Required</div><div class="kpi-value">${yesCount}</div></div>
+            </article>
+            <article class="kpi-card">
+                <div class="kpi-icon red"><i class="bi bi-x-circle-fill"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">No Room Required</div><div class="kpi-value">${noCount}</div></div>
+            </article>
+            <article class="kpi-card">
+                <div class="kpi-icon"><i class="bi bi-calendar3"></i></div>
+                <div class="kpi-meta"><div class="kpi-label">Selected Month</div><div class="kpi-value month-val">${escapeHtml(state.selectedMonth)}</div></div>
+            </article>
+        </section>
+
+        <section class="analytics-grid mb-3">
+            <article class="panel-card">
+                <h3 class="panel-title mb-2"><i class="bi bi-bar-chart-fill"></i> Month-wise Visitors</h3>
+                <div class="v-bar-chart">
+                    ${chartMonths.map(m => {
+                        const c = (getMonthData(m).visitors || []).length;
+                        const h = c ? Math.max(18, Math.round((c / maxVisitors) * 115)) : 4;
+                        const shortLbl = m.split(" ")[0].slice(0, 3) + " " + m.split(" ")[1];
+                        return `
+                            <div class="v-bar-col">
+                                <div class="v-bar-val">${c}</div>
+                                <div class="v-bar" style="height:${h}px"></div>
+                                <div class="v-bar-lbl">${shortLbl}</div>
+                            </div>
+                        `;
+                    }).join("")}
+                </div>
+            </article>
+
+            <article class="panel-card">
+                <h3 class="panel-title mb-2"><i class="bi bi-pie-chart-fill"></i> Visitor Status (${escapeHtml(state.selectedMonth)})</h3>
+                <div class="donut-layout">
+                    <div class="donut-chart" style="background: conic-gradient(#22c55e 0 ${yesPct}%, #ef4444 ${yesPct}% 100%);">
+                        <div class="donut-center">
+                            <strong>${total}</strong>
+                            <span>Visitors</span>
+                        </div>
+                    </div>
+                    <div class="chart-legend">
+                        <div class="legend-item"><span class="legend-dot" style="background:#22c55e;"></span>Room Required: <strong>${yesCount}</strong> (${yesPct}%)</div>
+                        <div class="legend-item"><span class="legend-dot" style="background:#ef4444;"></span>No Room Required: <strong>${noCount}</strong> (${noPct}%)</div>
+                    </div>
+                </div>
+            </article>
+        </section>
+
+        <section class="filter-card">
+            <div class="search-box">
+                <i class="bi bi-search"></i>
+                <input type="search" id="visitorSearchInput" value="${escapeHtml(state.visitorSearch)}" placeholder="Search by name or mobile...">
+            </div>
+            <select id="visitorRoomFilter" class="filter-select">
+                <option value="">Room Required</option>
+                <option value="Yes" ${state.visitorRoomFilter === "Yes" ? "selected" : ""}>Yes</option>
+                <option value="No" ${state.visitorRoomFilter === "No" ? "selected" : ""}>No</option>
+            </select>
+            <select id="visitorSourceFilter" class="filter-select">
+                <option value="">Source (How did you hear)</option>
+                ${sources.map(s => `<option value="${escapeHtml(s)}" ${state.visitorSourceFilter === s ? "selected" : ""}>${escapeHtml(s)}</option>`).join("")}
+            </select>
+            <button type="button" class="btn-reset" id="visitorResetBtn"><i class="bi bi-arrow-clockwise"></i> Reset</button>
+        </section>
+
+        <div class="panel-card">
+            <div class="table-wrap desktop-only-table">
+                <div class="table-responsive-custom">
+                    <table class="data-table">
+                        <thead>
+                            <tr><th>#</th><th>Timestamp</th><th>Full Name</th><th>Mobile Number</th><th>Room Required</th><th>How did you hear about us</th></tr>
+                        </thead>
+                        <tbody>
+                            ${pageRecords.length ? pageRecords.map((v, idx) => `
+                                <tr>
+                                    <td>${start + idx + 1}</td>
+                                    <td class="small text-nowrap">${escapeHtml(v.timestamp)}</td>
+                                    <td class="fw-semibold">${escapeHtml(v.fullName)}</td>
+                                    <td>${escapeHtml(v.mobileNumber)}</td>
+                                    <td><span class="badge-soft ${v.roomRequired === "Yes" ? "badge-paid" : "badge-pending"}">${escapeHtml(v.roomRequired)}</span></td>
+                                    <td>${escapeHtml(v.source)}</td>
+                                </tr>
+                            `).join("") : `<tr><td colspan="6" class="empty-cell">No visitor records found for ${escapeHtml(state.selectedMonth)}.</td></tr>`}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="mobile-cards-list">
+                ${pageRecords.length ? pageRecords.map(v => `
+                    <div class="mobile-record-card">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <div class="fw-bold">${escapeHtml(v.fullName)}</div>
+                                <div class="small text-muted"><i class="bi bi-telephone me-1"></i>${escapeHtml(v.mobileNumber)} &bull; ${escapeHtml(v.source)}</div>
+                                <div class="small text-muted">${escapeHtml(v.timestamp)}</div>
+                            </div>
+                            <span class="badge-soft ${v.roomRequired === "Yes" ? "badge-paid" : "badge-pending"}">Room: ${escapeHtml(v.roomRequired)}</span>
+                        </div>
+                    </div>
+                `).join("") : `<div class="text-center text-muted py-4">No visitor records found for ${escapeHtml(state.selectedMonth)}.</div>`}
+            </div>
+
+            <div class="pagination-bar">
+                <div>Showing ${filtered.length ? start + 1 : 0} – ${Math.min(start + PAGE_SIZE, filtered.length)} of ${filtered.length} entries</div>
+                <div class="pagination-controls" id="visitorPagination"></div>
+            </div>
+        </div>
+    `;
+
+    document.getElementById("backToMoreFromVisitors").addEventListener("click", () => switchModule("more", "hub"));
+    document.getElementById("visitorSearchInput").addEventListener("input", e => { state.visitorSearch = e.target.value; state.visitorPage = 1; renderVisitorsModule(); });
+    document.getElementById("visitorRoomFilter").addEventListener("change", e => { state.visitorRoomFilter = e.target.value; state.visitorPage = 1; renderVisitorsModule(); });
+    document.getElementById("visitorSourceFilter").addEventListener("change", e => { state.visitorSourceFilter = e.target.value; state.visitorPage = 1; renderVisitorsModule(); });
+    document.getElementById("visitorResetBtn").addEventListener("click", () => {
+        state.visitorSearch = ""; state.visitorRoomFilter = ""; state.visitorSourceFilter = ""; state.visitorPage = 1;
+        renderVisitorsModule();
+    });
+
+    buildPaginationButtons(
+        document.getElementById("visitorPagination"),
+        state.visitorPage,
+        totalPages,
+        page => { state.visitorPage = page; renderVisitorsModule(); }
+    );
+}
+
+/* ================= SHARED PAGINATION BUILDER ================= */
+function buildPaginationButtons(container, currentPage, totalPages, onPageChange) {
+    if (!container) return;
+    container.innerHTML = "";
+
+    const makeBtn = (label, disabled, active, handler) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "page-btn" + (active ? " active" : "");
+        b.textContent = label;
+        b.disabled = disabled;
+        b.addEventListener("click", handler);
+        return b;
+    };
+
+    container.appendChild(makeBtn("‹ Prev", currentPage <= 1, false, () => onPageChange(currentPage - 1)));
+    for (let p = 1; p <= totalPages; p++) {
+        container.appendChild(makeBtn(String(p), false, p === currentPage, () => onPageChange(p)));
+    }
+    container.appendChild(makeBtn("Next ›", currentPage >= totalPages, false, () => onPageChange(currentPage + 1)));
+}
+
+/* ================= EVENT BINDINGS & INIT ================= */
+loginForm.addEventListener("submit", event => {
+    event.preventDefault();
+    if (passwordInput.value === ADMIN_PASSWORD) {
+        const loginTime = Date.now();
+        localStorage.setItem(LOGIN_STATUS_KEY, "true");
+        localStorage.setItem(LOGIN_TIME_KEY, String(loginTime));
+        loginError.textContent = "";
+        showMainArea();
+        startSessionTimer(loginTime);
+    } else {
+        loginError.textContent = "Incorrect password. Please try again.";
+        passwordInput.value = "";
+        passwordInput.focus();
+    }
+});
+
+logoutButton.addEventListener("click", logoutAdmin);
+
+menuButton.addEventListener("click", () => {
+    sidebar.classList.toggle("open");
+    sidebarBackdrop.classList.toggle("show");
+});
+
+sidebarBackdrop.addEventListener("click", closeSidebarDrawer);
+
+mobileBottomNav.querySelectorAll(".bottom-nav-btn").forEach(btn => {
+    btn.addEventListener("click", () => switchModule(btn.dataset.module));
+});
+
+document.addEventListener("DOMContentLoaded", () => {
+    initMonthSelectors();
+    checkExistingSession();
+});

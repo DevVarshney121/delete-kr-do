@@ -2,89 +2,165 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>The Elite Stay – Management Report</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+    <!-- ================= ADMIN LOGIN PAGE ================= -->
     <main id="loginPage" class="login-page">
         <section class="login-card" aria-label="Admin Login">
-            <div class="login-logo"><i class="bi bi-house-door"></i></div>
-            <h1>The Elite Stay</h1>
-            <p>Management Report</p>
-            <form id="loginForm">
+            <div class="login-brand">
+                <div class="login-logo"><i class="bi bi-house-door"></i></div>
+                <h1>The Elite Stay</h1>
+                <p>Management Report &bull; Admin Login</p>
+            </div>
+            <form id="loginForm" novalidate>
                 <div class="mb-3">
-                    <label for="password" class="form-label">Admin Password</label>
-                    <input type="password" id="password" class="form-control" placeholder="Enter password" autocomplete="current-password" required>
+                    <label for="password" class="form-label fw-semibold">Admin Password</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-white"><i class="bi bi-lock text-primary"></i></span>
+                        <input type="password" id="password" class="form-control" placeholder="Enter password" autocomplete="current-password" required>
+                    </div>
                 </div>
                 <p id="loginError" class="login-error" role="alert"></p>
-                <button type="submit" class="btn login-button w-100">Login</button>
+                <button type="submit" class="btn btn-primary login-button w-100">
+                    <i class="bi bi-box-arrow-in-right me-2"></i>Login to Dashboard
+                </button>
             </form>
         </section>
     </main>
 
-    <main id="mainArea" class="app-shell d-none" aria-hidden="true">
-        <aside class="sidebar" id="sidebar">
+    <!-- ================= MAIN APPLICATION SHELL ================= -->
+    <div id="mainArea" class="app-shell d-none" aria-hidden="true">
+        <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
+
+        <!-- DESKTOP / DRAWER LEFT SIDEBAR -->
+        <aside class="sidebar" id="sidebar" aria-label="Module Navigation">
             <div class="sidebar-brand">
-                <div class="brand-house"><i class="bi bi-house-door"></i></div>
+                <div class="brand-house-icon"><i class="bi bi-house"></i></div>
                 <div class="brand-title">The Elite Stay</div>
                 <div class="brand-subtitle">Management Report</div>
             </div>
-            <div id="moduleNav" class="module-nav" aria-label="Main modules"></div><nav id="sideNav" class="side-nav" aria-label="Module navigation"></nav>
+            <nav class="side-nav" id="sidebarNav" aria-label="Main Sidebar Menu">
+                <!-- Dynamically populated according to active module -->
+            </nav>
         </aside>
 
-        <section class="content-area">
+        <!-- RIGHT CONTENT AREA -->
+        <div class="content-area">
+            <!-- TOP NAVBAR -->
             <header class="topbar">
-                <button class="icon-button menu-button" id="menuButton" type="button" aria-label="Open menu"><i class="bi bi-list"></i></button>
+                <button class="icon-btn menu-button" id="menuButton" type="button" aria-label="Toggle Menu">
+                    <i class="bi bi-list"></i>
+                </button>
+
                 <div class="topbar-brand">
-                    <div class="topbar-house"><i class="bi bi-house-door"></i></div>
+                    <div class="topbar-house-icon"><i class="bi bi-house"></i></div>
                     <div>
                         <div class="topbar-title">The Elite Stay</div>
                         <div class="topbar-subtitle">Management Report</div>
                     </div>
                 </div>
 
-                <div class="topbar-actions ms-auto">
-                    <label class="month-control" aria-label="Select month">
-                        <i class="bi bi-calendar3"></i>
-                        <select id="monthSelect"></select>
-                    </label>
-                    <button class="icon-button notification-button" id="notificationButton" type="button" aria-label="Notifications"><i class="bi bi-bell"></i><span class="notification-dot"></span></button>
-                    <button class="admin-button" id="adminButton" type="button" aria-expanded="false"><span class="admin-avatar"><i class="bi bi-person-fill"></i></span><span class="admin-label">Admin</span><i class="bi bi-chevron-down"></i></button>
-                    <div class="admin-menu d-none" id="adminMenu"><button id="logoutButton" type="button"><i class="bi bi-box-arrow-right"></i> Logout</button></div>
+                <!-- DESKTOP COMMON MONTH SELECTOR -->
+                <div class="month-control desktop-month-control">
+                    <i class="bi bi-calendar3"></i>
+                    <select id="monthSelectDesktop" aria-label="Select Month"></select>
+                </div>
+
+                <div class="topbar-actions">
+                    <!-- Notification Bell Dropdown -->
+                    <div class="dropdown">
+                        <button class="icon-btn position-relative" id="notifButton" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Notifications">
+                            <i class="bi bi-bell"></i>
+                            <span id="notifDot" class="notif-dot"></span>
+                        </button>
+                        <div class="dropdown-menu dropdown-menu-end notif-dropdown shadow-lg border-0 p-0" aria-labelledby="notifButton">
+                            <div class="notif-header">
+                                <span>Month Overview</span>
+                                <span id="notifMonthBadge" class="badge bg-primary-subtle text-primary">Dec 2026</span>
+                            </div>
+                            <div id="notifBody" class="notif-body"></div>
+                        </div>
+                    </div>
+
+                    <!-- Admin Profile Dropdown -->
+                    <div class="dropdown">
+                        <button class="admin-pill dropdown-toggle" id="adminMenuBtn" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <span class="admin-avatar"><i class="bi bi-person-fill"></i></span>
+                            <span class="admin-label">Admin</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0 mt-2">
+                            <li class="px-3 py-2 border-bottom">
+                                <div class="fw-semibold small text-dark">Administrator</div>
+                                <div class="text-muted" style="font-size: 12px;">Session: <span id="sessionTimerLabel">30s</span> left</div>
+                            </li>
+                            <li>
+                                <button class="dropdown-item text-danger py-2" id="logoutButton" type="button">
+                                    <i class="bi bi-box-arrow-right me-2"></i>Logout
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
                 </div>
             </header>
 
-            <div id="notificationPanel" class="notification-panel d-none">
-                <strong><i class="bi bi-bell"></i> Notifications</strong>
-                <span>No new notifications.</span>
+            <!-- MOBILE COMMON MONTH SELECTOR STRIP -->
+            <div class="mobile-month-bar">
+                <div class="month-control mobile-month-control">
+                    <i class="bi bi-calendar3"></i>
+                    <select id="monthSelectMobile" aria-label="Select Month (Mobile)"></select>
+                </div>
             </div>
 
-            <div class="dashboard-content">
-                <div id="moduleContent"></div>
-            </div>
-        </section>
-    </main>
+            <!-- DYNAMIC MODULE CONTENT -->
+            <main id="moduleContainer" class="dashboard-content">
+                <!-- Active module renders here -->
+            </main>
+        </div>
 
-    <nav id="mobileBottomNav" class="mobile-bottom-nav d-none" aria-label="Main mobile navigation">
-        <button type="button" data-module="profile"><i class="bi bi-person-fill"></i><span>Profile</span></button>
-        <button type="button" data-module="payment"><i class="bi bi-credit-card"></i><span>Payment</span></button>
-        <button type="button" data-module="expense"><i class="bi bi-coin"></i><span>Expense</span></button>
-        <button type="button" data-module="more"><i class="bi bi-grid"></i><span>More</span></button>
-    </nav>
+        <!-- MOBILE FIXED BOTTOM NAVIGATION (EXACTLY 4 BUTTONS) -->
+        <nav class="mobile-bottom-nav" id="mobileBottomNav" aria-label="Mobile Bottom Navigation">
+            <button type="button" class="bottom-nav-btn active" data-module="profile">
+                <i class="bi bi-person-fill"></i>
+                <span>Profile</span>
+            </button>
+            <button type="button" class="bottom-nav-btn" data-module="payment">
+                <i class="bi bi-credit-card-2-front"></i>
+                <span>Payment</span>
+            </button>
+            <button type="button" class="bottom-nav-btn" data-module="expense">
+                <i class="bi bi-cash-coin"></i>
+                <span>Expense</span>
+            </button>
+            <button type="button" class="bottom-nav-btn" data-module="more">
+                <i class="bi bi-grid"></i>
+                <span>More</span>
+            </button>
+        </nav>
+    </div>
 
-    <div class="modal fade" id="genericModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-lg">
-            <div class="modal-content app-modal">
-                <div class="modal-header"><h5 class="modal-title" id="genericModalTitle"></h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
-                <div class="modal-body" id="genericModalBody"></div>
+    <!-- REUSABLE DETAIL / RECEIPT / DOCUMENT MODAL -->
+    <div class="modal fade" id="appModal" tabindex="-1" aria-labelledby="appModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+            <div class="modal-content border-0 shadow-lg rounded-4">
+                <div class="modal-header bg-primary-navy text-white rounded-top-4">
+                    <h5 class="modal-title fw-bold" id="appModalTitle">Details</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="appModalBody"></div>
+                <div class="modal-footer border-0 bg-light rounded-bottom-4">
+                    <button type="button" class="btn btn-secondary rounded-3 px-4" data-bs-dismiss="modal">Close</button>
+                </div>
             </div>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/data.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>
