@@ -4,7 +4,7 @@
    ========================================================================== */
 
 const ADMIN_PASSWORD = "admin123";
-const SESSION_DURATION = 30 * 1000; // Preserved 30-second session
+const SESSION_DURATION = 5 * 60 * 1000; // Preserved 30-second session
 const LOGIN_STATUS_KEY = "eliteStayAdminLoggedIn";
 const LOGIN_TIME_KEY = "eliteStayAdminLoginTime";
 const SELECTED_MONTH_KEY = "eliteStaySelectedMonth";
