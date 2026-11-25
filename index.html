@@ -2,18 +2,21 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Elite Stay Management Report</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>The Elite Stay – Management Report</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
     <main id="loginPage" class="login-page">
         <section class="login-card" aria-label="Admin Login">
-            <h1>Admin Login</h1>
+            <div class="login-logo"><i class="bi bi-house-door"></i></div>
+            <h1>The Elite Stay</h1>
+            <p>Management Report</p>
             <form id="loginForm">
                 <div class="mb-3">
-                    <label for="password" class="form-label">Password</label>
+                    <label for="password" class="form-label">Admin Password</label>
                     <input type="password" id="password" class="form-control" placeholder="Enter password" autocomplete="current-password" required>
                 </div>
                 <p id="loginError" class="login-error" role="alert"></p>
@@ -24,110 +27,64 @@
 
     <main id="mainArea" class="app-shell d-none" aria-hidden="true">
         <aside class="sidebar" id="sidebar">
-            <div class="brand brand-sidebar">
-                <div class="brand-icon">⌂</div>
+            <div class="sidebar-brand">
+                <div class="brand-house"><i class="bi bi-house-door"></i></div>
                 <div class="brand-title">The Elite Stay</div>
                 <div class="brand-subtitle">Management Report</div>
             </div>
-            <nav class="side-nav" aria-label="Main navigation">
-                <button class="side-nav-item active" type="button">👥 <span>Visitor Enquiries</span></button>
-                <button class="side-nav-item" type="button">▥ <span>Reports</span></button>
-                <button class="side-nav-item" type="button">▣ <span>Month Analysis</span></button>
-            </nav>
+            <div id="moduleNav" class="module-nav" aria-label="Main modules"></div><nav id="sideNav" class="side-nav" aria-label="Module navigation"></nav>
         </aside>
 
         <section class="content-area">
             <header class="topbar">
-                <button class="menu-button" id="menuButton" type="button" aria-label="Toggle menu">☰</button>
-                <div class="brand brand-topbar">
-                    <div class="brand-icon">⌂</div>
+                <button class="icon-button menu-button" id="menuButton" type="button" aria-label="Open menu"><i class="bi bi-list"></i></button>
+                <div class="topbar-brand">
+                    <div class="topbar-house"><i class="bi bi-house-door"></i></div>
                     <div>
-                        <div class="brand-title">The Elite Stay</div>
-                        <div class="brand-subtitle">Management Report</div>
+                        <div class="topbar-title">The Elite Stay</div>
+                        <div class="topbar-subtitle">Management Report</div>
                     </div>
                 </div>
-                <div class="month-control">
-                    <span class="calendar-icon">▣</span>
-                    <select id="monthSelect" aria-label="Select month"></select>
+
+                <div class="topbar-actions ms-auto">
+                    <label class="month-control" aria-label="Select month">
+                        <i class="bi bi-calendar3"></i>
+                        <select id="monthSelect"></select>
+                    </label>
+                    <button class="icon-button notification-button" id="notificationButton" type="button" aria-label="Notifications"><i class="bi bi-bell"></i><span class="notification-dot"></span></button>
+                    <button class="admin-button" id="adminButton" type="button" aria-expanded="false"><span class="admin-avatar"><i class="bi bi-person-fill"></i></span><span class="admin-label">Admin</span><i class="bi bi-chevron-down"></i></button>
+                    <div class="admin-menu d-none" id="adminMenu"><button id="logoutButton" type="button"><i class="bi bi-box-arrow-right"></i> Logout</button></div>
                 </div>
             </header>
 
+            <div id="notificationPanel" class="notification-panel d-none">
+                <strong><i class="bi bi-bell"></i> Notifications</strong>
+                <span>No new notifications.</span>
+            </div>
+
             <div class="dashboard-content">
-                <section class="page-heading">
-                    <div class="heading-icon">👥</div>
-                    <div>
-                        <h1>Visitor Enquiries Report</h1>
-                        <p>Track all visitors &amp; room enquiries month-wise.</p>
-                    </div>
-                </section>
-
-                <section class="summary-grid">
-                    <article class="summary-card highlight">
-                        <div class="summary-icon">👥</div>
-                        <div><span>Total Visitors</span><strong id="totalVisitors">0</strong></div>
-                    </article>
-                    <article class="summary-card">
-                        <div class="summary-icon green">✓</div>
-                        <div><span>Room Required</span><strong id="roomRequiredCount">0</strong></div>
-                    </article>
-                    <article class="summary-card">
-                        <div class="summary-icon red">×</div>
-                        <div><span>No Room Required</span><strong id="noRoomRequiredCount">0</strong></div>
-                    </article>
-                    <article class="summary-card">
-                        <div class="summary-icon">▣</div>
-                        <div><span>Selected Month</span><strong id="selectedMonthLabel">December 2026</strong></div>
-                    </article>
-                </section>
-
-                <section class="visual-grid">
-                    <article class="panel chart-panel">
-                        <h2>▥ <span>Month-wise Visitors</span></h2>
-                        <div class="bar-chart" id="barChart"></div>
-                    </article>
-                    <article class="panel status-panel">
-                        <h2>👥 <span id="statusTitle">Visitor Status (December 2026)</span></h2>
-                        <div class="status-content">
-                            <div class="donut-wrap">
-                                <div class="donut" id="donutChart"><div><strong id="donutTotal">0</strong><span>Visitors</span></div></div>
-                            </div>
-                            <div class="legend">
-                                <div><i class="legend-box green-bg"></i>Room Required : <b id="legendYes">0</b> (<span id="legendYesPct">0</span>%)</div>
-                                <div><i class="legend-box red-bg"></i>No Room Required : <b id="legendNo">0</b> (<span id="legendNoPct">0</span>%)</div>
-                            </div>
-                        </div>
-                    </article>
-                </section>
-
-                <section class="filter-panel">
-                    <div class="filter-title">⚱ <strong>Filter Data</strong></div>
-                    <div class="filter-controls">
-                        <div class="search-wrap"><span>⌕</span><input id="searchInput" type="search" placeholder="Search by name or mobile..." aria-label="Search by name or mobile"></div>
-                        <select id="roomFilter" aria-label="Filter by room required">
-                            <option value="">Room Required</option><option value="Yes">Yes</option><option value="No">No</option>
-                        </select>
-                        <select id="sourceFilter" aria-label="Filter by source"><option value="">Source (How did you hear)</option></select>
-                        <button id="resetButton" class="reset-button" type="button">⟳ Reset</button>
-                    </div>
-                </section>
-
-                <section class="table-panel">
-                    <div class="table-scroll">
-                        <table class="visitor-table">
-                            <thead><tr><th>#</th><th>Timestamp</th><th>Full Name</th><th>Mobile Number</th><th>Room Required</th><th>How did you hear about us</th></tr></thead>
-                            <tbody id="visitorTableBody"></tbody>
-                        </table>
-                    </div>
-                </section>
-
-                <section class="pagination-row">
-                    <div id="entrySummary">Showing 0 entries</div>
-                    <div class="pagination" id="pagination"></div>
-                </section>
+                <div id="moduleContent"></div>
             </div>
         </section>
     </main>
 
+    <nav id="mobileBottomNav" class="mobile-bottom-nav d-none" aria-label="Main mobile navigation">
+        <button type="button" data-module="profile"><i class="bi bi-person-fill"></i><span>Profile</span></button>
+        <button type="button" data-module="payment"><i class="bi bi-credit-card"></i><span>Payment</span></button>
+        <button type="button" data-module="expense"><i class="bi bi-coin"></i><span>Expense</span></button>
+        <button type="button" data-module="more"><i class="bi bi-grid"></i><span>More</span></button>
+    </nav>
+
+    <div class="modal fade" id="genericModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content app-modal">
+                <div class="modal-header"><h5 class="modal-title" id="genericModalTitle"></h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+                <div class="modal-body" id="genericModalBody"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>
