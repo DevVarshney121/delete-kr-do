@@ -2,7 +2,7 @@ THE ELITE STAY MANAGEMENT REPORT
 =================================
 
 Current version:
-Local Admin Login Demo
+Admin Login + Visitor Enquiries Report
 
 Technology:
 - HTML
@@ -19,16 +19,13 @@ Session behavior:
 - Refreshing/reopening the page during the 30-second session keeps the admin logged in.
 - The original login timestamp is used, so refresh does not reset the 30-second timer.
 - When 30 seconds have elapsed, the session is cleared and the login page is shown.
-- After logout, the admin must enter the password again.
 
-Current flow:
-Admin Login
-    -> Correct password
-    -> Completely empty website area
-    -> Refresh keeps the same session
-    -> 30 seconds from original login complete
-    -> Automatic logout
-    -> Login page appears again
+Visitor data:
+- Visitor records are stored in the monthlyData JavaScript object in js/app.js.
+- The selected month controls the records shown in the table.
+- The available months are December 2026 through December 2027.
+- The current sample data contains the five visitor records supplied in the project reference.
+- Add future visitor records directly to the corresponding month's array.
 
 How to run:
 1. Extract the ZIP.
