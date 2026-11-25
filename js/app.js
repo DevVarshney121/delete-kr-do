@@ -1,5 +1,5 @@
 const ADMIN_PASSWORD = "admin123";
-const SESSION_DURATION = 30 * 1000;
+const SESSION_DURATION = 2 * 60 * 1000;
 const LOGIN_STATUS_KEY = "eliteStayAdminLoggedIn";
 const LOGIN_TIME_KEY = "eliteStayAdminLoginTime";
 const SELECTED_MONTH_KEY = "eliteStaySelectedMonth";
