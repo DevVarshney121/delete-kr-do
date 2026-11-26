@@ -204,6 +204,7 @@ function openModal(title, htmlContent) {
 function closeSidebarDrawer() {
     sidebar.classList.remove("open");
     sidebarBackdrop.classList.remove("show");
+    if (menuButton) menuButton.setAttribute("aria-expanded", "false");
 }
 
 /* ================= AUTH & 30-SECOND SESSION ================= */
@@ -289,7 +290,9 @@ function switchModule(moduleKey, subViewKey = null) {
     state.activeModule = mod.key;
     state.activeSubView = subViewKey || mod.defaultSub;
     state.profileMobileDetailOpen = false;
-    closeSidebarDrawer();
+    if (window.innerWidth <= 991.98) {
+        closeSidebarDrawer();
+    }
     renderApp();
     window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -2416,11 +2419,21 @@ loginForm.addEventListener("submit", event => {
 logoutButton.addEventListener("click", logoutAdmin);
 
 menuButton.addEventListener("click", () => {
-    sidebar.classList.toggle("open");
-    sidebarBackdrop.classList.toggle("show");
+    const isOpen = sidebar.classList.toggle("open");
+    menuButton.setAttribute("aria-expanded", String(isOpen));
+    if (window.innerWidth <= 991.98) {
+        sidebarBackdrop.classList.toggle("show", isOpen);
+    } else {
+        sidebarBackdrop.classList.remove("show");
+    }
 });
 
 sidebarBackdrop.addEventListener("click", closeSidebarDrawer);
+
+window.addEventListener("resize", () => {
+    const isMobile = window.innerWidth <= 991.98;
+    sidebarBackdrop.classList.toggle("show", isMobile && sidebar.classList.contains("open"));
+});
 
 mobileBottomNav.querySelectorAll(".bottom-nav-btn").forEach(btn => {
     btn.addEventListener("click", () => switchModule(btn.dataset.module));

@@ -139,6 +139,7 @@ button, input, select, textarea {
     display: flex;
     width: 100%;
     background: var(--page-bg);
+    overflow-x: clip;
 }
 
 /* ================= SIDEBAR ================= */
@@ -156,7 +157,17 @@ button, input, select, textarea {
     height: 100vh;
     overflow-y: auto;
     z-index: 1040;
-    transition: transform 0.25s ease;
+    margin-left: calc(-1 * var(--sidebar-width));
+    visibility: hidden;
+    pointer-events: none;
+    transition: margin-left 0.25s ease, transform 0.25s ease, visibility 0s linear 0.25s;
+}
+
+.sidebar.open {
+    margin-left: 0;
+    visibility: visible;
+    pointer-events: auto;
+    transition: margin-left 0.25s ease, transform 0.25s ease, visibility 0s linear 0s;
 }
 
 .sidebar-brand {
@@ -1290,17 +1301,25 @@ button, input, select, textarea {
     }
 }
 
+@media (min-width: 992px) {
+    .sidebar-backdrop.show {
+        display: none;
+    }
+}
+
 @media (max-width: 991.98px) {
     .sidebar {
         position: fixed;
         left: 0;
         top: 0;
         bottom: 0;
+        margin-left: 0;
         transform: translateX(-105%);
         box-shadow: 10px 0 30px rgba(9, 25, 58, 0.35);
     }
 
     .sidebar.open {
+        margin-left: 0;
         transform: translateX(0);
     }
 
