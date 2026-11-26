@@ -154,6 +154,136 @@ function getInitials(name) {
         .join("");
 }
 
+const FALLBACK_IMAGES = typeof DEFAULT_IMAGES !== "undefined" ? DEFAULT_IMAGES : {
+    profilePhoto: "images/profile.jpg",
+    paymentReceipt: "images/payment-receipt.jpg",
+    aadhaarFront: "images/aadhaar-front.jpg",
+    aadhaarBack: "images/aadhaar-back.jpg",
+    yourId: "images/id-card.jpg",
+    expenseReceipt: "images/expense-receipt.jpg"
+};
+
+function resolveImageUrl(value, fallbackKey = "profilePhoto") {
+    const cleaned = (value || "").trim();
+    return cleaned || FALLBACK_IMAGES[fallbackKey] || FALLBACK_IMAGES.profilePhoto;
+}
+
+function isPdfPath(url) {
+    return /\.pdf(\?.*)?$/i.test((url || "").trim());
+}
+
+function buildImageTag(url, fallbackKey, alt, cssClass = "", extraAttrs = "") {
+    const fallback = FALLBACK_IMAGES[fallbackKey] || FALLBACK_IMAGES.profilePhoto;
+    const resolved = resolveImageUrl(url, fallbackKey);
+    if (isPdfPath(resolved)) {
+        return `<div class="pdf-preview-badge"><i class="bi bi-file-earmark-pdf-fill text-danger fs-3"></i><span>PDF File</span></div>`;
+    }
+    return `<img src="${escapeHtml(resolved)}" alt="${escapeHtml(alt)}"${cssClass ? ` class="${escapeHtml(cssClass)}"` : ""}${extraAttrs ? ` ${extraAttrs}` : ""} onerror="this.onerror=null;this.src='${escapeHtml(fallback)}';">`;
+}
+
+function buildModalImageBlockHtml(title, fileUrl, fallbackKey) {
+    const resolved = resolveImageUrl(fileUrl, fallbackKey);
+    const previewHtml = isPdfPath(resolved)
+        ? `<div class="py-4"><i class="bi bi-file-earmark-pdf-fill text-danger" style="font-size:3rem;"></i><div class="mt-2"><a href="${escapeHtml(resolved)}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary rounded-3">Open PDF Document</a></div></div>`
+        : buildImageTag(resolved, fallbackKey, title, "modal-preview-img");
+    return `
+        <div class="modal-preview-frame mt-3">
+            ${previewHtml}
+            <div class="small text-muted mt-2">Image Path: <code class="text-primary">${escapeHtml(resolved)}</code></div>
+        </div>
+    `;
+}
+
+function buildProfileAvatarHtml(profile, clickable = true) {
+    const photoUrl = resolveImageUrl(profile && profile.profilePhoto, "profilePhoto");
+    const name = (profile && profile.fullName) || "Resident";
+    const attrs = clickable
+        ? `data-preview-doc="Profile Photo" data-doc-file="${escapeHtml(photoUrl)}" data-doc-fallback="profilePhoto" title="Click to preview photo"`
+        : "";
+    return `<div class="profile-avatar${clickable ? " clickable" : ""}" ${attrs}>${buildImageTag(photoUrl, "profilePhoto", name)}</div>`;
+}
+
+function buildProfileDocsGridHtml(p) {
+    const docs = [
+        { label: "Aadhaar Card – Front", short: "Aadhaar (Front)", value: p.aadhaarFront, fallbackKey: "aadhaarFront" },
+        { label: "Aadhaar Card – Back", short: "Aadhaar (Back)", value: p.aadhaarBack, fallbackKey: "aadhaarBack" },
+        { label: "Your ID", short: "Your ID", value: p.yourId, fallbackKey: "yourId" }
+    ];
+    return `
+        <div class="doc-grid">
+            ${docs.map(d => {
+                const url = resolveImageUrl(d.value, d.fallbackKey);
+                return `
+                    <div class="doc-card" data-preview-doc="${escapeHtml(d.label)}" data-doc-file="${escapeHtml(url)}" data-doc-fallback="${d.fallbackKey}">
+                        <div class="doc-thumb">${buildImageTag(url, d.fallbackKey, d.short)}</div>
+                        <div class="doc-name">${escapeHtml(d.short)}</div>
+                        <div class="small text-primary mt-1"><i class="bi bi-eye"></i> Preview</div>
+                    </div>
+                `;
+            }).join("")}
+        </div>
+    `;
+}
+
+function buildReceiptCardHtml(label, fileUrl, fallbackKey = "paymentReceipt") {
+    const url = resolveImageUrl(fileUrl, fallbackKey);
+    return `
+        <div class="doc-card mt-2" data-preview-doc="${escapeHtml(label)}" data-doc-file="${escapeHtml(url)}" data-doc-fallback="${fallbackKey}">
+            <div class="doc-thumb receipt-thumb">${buildImageTag(url, fallbackKey, label)}</div>
+            <div class="d-flex justify-content-between align-items-center gap-2 mt-1">
+                <span class="doc-name text-truncate">${escapeHtml(url)}</span>
+                <span class="small text-primary text-nowrap"><i class="bi bi-eye me-1"></i>View</span>
+            </div>
+        </div>
+    `;
+}
+
+function buildFormImageInputHtml({ name, label, value, fallbackKey, round = false, colClass = "col-md-4" }) {
+    const resolved = resolveImageUrl(value, fallbackKey);
+    const previewId = `imgPreview_${name}`;
+    const fallback = FALLBACK_IMAGES[fallbackKey] || FALLBACK_IMAGES.profilePhoto;
+    return `
+        <div class="${colClass}">
+            <label class="form-label small fw-semibold">${escapeHtml(label)}</label>
+            <input name="${escapeHtml(name)}" class="form-control" placeholder="${escapeHtml(fallback)}" value="${escapeHtml(resolved)}" data-img-preview-input="${escapeHtml(previewId)}" data-img-fallback="${escapeHtml(fallbackKey)}">
+            <div class="form-img-preview-wrap">
+                <img id="${escapeHtml(previewId)}" src="${escapeHtml(isPdfPath(resolved) ? fallback : resolved)}" alt="${escapeHtml(label)}" class="form-img-preview${round ? " round" : ""}" onerror="this.onerror=null;this.src='${escapeHtml(fallback)}';">
+                <div class="small text-muted text-truncate">Preview (${escapeHtml(fallback)})</div>
+            </div>
+        </div>
+    `;
+}
+
+function bindFormImagePreviews(container = moduleContainer) {
+    container.querySelectorAll("[data-img-preview-input]").forEach(input => {
+        input.addEventListener("input", () => {
+            const imgEl = document.getElementById(input.dataset.imgPreviewInput);
+            if (!imgEl) return;
+            const fallbackKey = input.dataset.imgFallback || "profilePhoto";
+            const fallback = FALLBACK_IMAGES[fallbackKey] || FALLBACK_IMAGES.profilePhoto;
+            const nextUrl = resolveImageUrl(input.value, fallbackKey);
+            imgEl.src = isPdfPath(nextUrl) ? fallback : nextUrl;
+        });
+    });
+}
+
+function bindExpenseReceiptButtons(container = moduleContainer) {
+    container.querySelectorAll("[data-exp-receipt]").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const fileUrl = resolveImageUrl(btn.dataset.expFile, "expenseReceipt");
+            openModal("Expense Bill / Receipt", `
+                <div class="detail-list">
+                    <div class="detail-row"><span class="detail-label">Expense Head</span><span class="detail-val">${escapeHtml(btn.dataset.expReceipt)}</span></div>
+                    <div class="detail-row"><span class="detail-label">Amount</span><span class="detail-val text-primary fw-bold">${formatINR(btn.dataset.expAmt)}</span></div>
+                    <div class="detail-row"><span class="detail-label">Recorded By</span><span class="detail-val">${escapeHtml(btn.dataset.expBy)}</span></div>
+                    <div class="detail-row"><span class="detail-label">Month</span><span class="detail-val">${escapeHtml(state.selectedMonth)}</span></div>
+                </div>
+                ${buildModalImageBlockHtml(btn.dataset.expReceipt || "Expense Receipt", fileUrl, "expenseReceipt")}
+            `);
+        });
+    });
+}
+
 function getMonthData(month = state.selectedMonth) {
     if (!monthlyData[month]) {
         monthlyData[month] = createEmptyMonthData();
@@ -510,7 +640,12 @@ function renderProfileModule() {
                                         <tr class="${selectedProfile && selectedProfile.id === p.id ? "selected-row" : ""}" data-select-profile="${escapeHtml(p.id)}" style="cursor:pointer;">
                                             <td>${start + idx + 1}</td>
                                             <td class="text-nowrap small">${escapeHtml(p.timestamp)}</td>
-                                            <td class="fw-semibold">${escapeHtml(p.fullName)}</td>
+                                            <td class="fw-semibold">
+                                                <div class="d-flex align-items-center gap-2">
+                                                    ${buildImageTag(p.profilePhoto, "profilePhoto", p.fullName, "table-avatar")}
+                                                    <span>${escapeHtml(p.fullName)}</span>
+                                                </div>
+                                            </td>
                                             <td><span class="badge-soft ${p.userType === "Student" ? "badge-student" : "badge-employee"}">${escapeHtml(p.userType)}</span></td>
                                             <td>${escapeHtml(p.mobileNumber)}</td>
                                             <td><span class="badge-soft badge-room">${escapeHtml(p.roomNumber)}</span></td>
@@ -531,7 +666,7 @@ function renderProfileModule() {
                         ${pageRecords.length ? pageRecords.map(p => `
                             <div class="mobile-record-card" data-mobile-profile="${escapeHtml(p.id)}">
                                 <div class="d-flex align-items-center gap-3">
-                                    <div class="profile-avatar">${escapeHtml(getInitials(p.fullName))}</div>
+                                    ${buildProfileAvatarHtml(p, false)}
                                     <div class="flex-grow-1 min-w-0">
                                         <div class="fw-bold text-dark text-truncate">${escapeHtml(p.fullName)}</div>
                                         <div class="small text-muted text-truncate"><i class="bi bi-envelope me-1"></i>${escapeHtml(p.email)}</div>
@@ -681,35 +816,14 @@ function buildProfileDetailPanelHtml(p) {
                 <div class="detail-row"><span class="detail-label"><i class="bi bi-shield-check"></i> Security Deposit</span><span class="detail-val">${formatINR(p.securityDeposit)}</span></div>
                 <div class="detail-row"><span class="detail-label"><i class="bi bi-credit-card"></i> Payment Mode</span><span class="detail-val">${escapeHtml(p.paymentMode || "—")}</span></div>
                 <div class="detail-row">
-                    <span class="detail-label"><i class="bi bi-file-earmark-text"></i> Payment Receipt</span>
-                    <span class="detail-val">
-                        <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" data-preview-doc="Payment Receipt" data-doc-file="${escapeHtml(p.paymentReceipt || "receipt.pdf")}">
-                            <i class="bi bi-eye me-1"></i>${escapeHtml(p.paymentReceipt || "View")}
-                        </button>
-                    </span>
+                    <span class="detail-label"><i class="bi bi-file-earmark-image"></i> Payment Receipt</span>
+                    <span class="detail-val text-primary small">Click preview below</span>
                 </div>
             </div>
+            ${buildReceiptCardHtml("Payment Receipt", p.paymentReceipt, "paymentReceipt")}
         `;
     } else if (tab === "documents") {
-        tabBody = `
-            <div class="doc-grid">
-                <div class="doc-card" data-preview-doc="Aadhaar Card – Front" data-doc-file="${escapeHtml(p.aadhaarFront || "aadhaar_front.jpg")}">
-                    <div class="doc-thumb"><i class="bi bi-card-heading"></i></div>
-                    <div class="doc-name">Aadhaar (Front)</div>
-                    <div class="small text-primary mt-1"><i class="bi bi-eye"></i> Preview</div>
-                </div>
-                <div class="doc-card" data-preview-doc="Aadhaar Card – Back" data-doc-file="${escapeHtml(p.aadhaarBack || "aadhaar_back.jpg")}">
-                    <div class="doc-thumb"><i class="bi bi-card-text"></i></div>
-                    <div class="doc-name">Aadhaar (Back)</div>
-                    <div class="small text-primary mt-1"><i class="bi bi-eye"></i> Preview</div>
-                </div>
-                <div class="doc-card" data-preview-doc="Your ID" data-doc-file="${escapeHtml(p.yourId || "id_card.jpg")}">
-                    <div class="doc-thumb"><i class="bi bi-person-vcard"></i></div>
-                    <div class="doc-name">Your ID</div>
-                    <div class="small text-primary mt-1"><i class="bi bi-eye"></i> Preview</div>
-                </div>
-            </div>
-        `;
+        tabBody = buildProfileDocsGridHtml(p);
     } else {
         tabBody = `
             <div class="detail-list">
@@ -729,7 +843,7 @@ function buildProfileDetailPanelHtml(p) {
             </button>
         </div>
         <div class="d-flex align-items-center gap-3 mb-2">
-            <div class="profile-avatar">${escapeHtml(getInitials(p.fullName))}</div>
+            ${buildProfileAvatarHtml(p, true)}
             <div class="min-w-0">
                 <div class="d-flex align-items-center gap-2 flex-wrap">
                     <strong class="fs-6 text-dark">${escapeHtml(p.fullName)}</strong>
@@ -762,7 +876,7 @@ function renderMobileProfileDetail(p) {
 
         <div class="panel-card mb-3">
             <div class="d-flex align-items-center gap-3">
-                <div class="profile-avatar">${escapeHtml(getInitials(p.fullName))}</div>
+                ${buildProfileAvatarHtml(p, true)}
                 <div class="flex-grow-1 min-w-0">
                     <div class="fw-bold fs-6">${escapeHtml(p.fullName)}</div>
                     <div class="small text-muted text-truncate"><i class="bi bi-envelope me-1"></i>${escapeHtml(p.email)}</div>
@@ -833,13 +947,10 @@ function renderMobileProfileDetail(p) {
                             <div class="detail-row"><span class="detail-label">Payment Mode</span><span class="detail-val">${escapeHtml(p.paymentMode || "—")}</span></div>
                             <div class="detail-row">
                                 <span class="detail-label">Payment Receipt</span>
-                                <span class="detail-val">
-                                    <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" data-preview-doc="Payment Receipt" data-doc-file="${escapeHtml(p.paymentReceipt || "receipt.pdf")}">
-                                        ${escapeHtml(p.paymentReceipt || "View")}
-                                    </button>
-                                </span>
+                                <span class="detail-val text-primary small">Tap image to enlarge</span>
                             </div>
                         </div>
+                        ${buildReceiptCardHtml("Payment Receipt", p.paymentReceipt, "paymentReceipt")}
                     </div>
                 </div>
             </div>
@@ -852,20 +963,7 @@ function renderMobileProfileDetail(p) {
                 </h2>
                 <div id="mpDocs" class="accordion-collapse collapse">
                     <div class="accordion-body">
-                        <div class="doc-grid">
-                            <div class="doc-card" data-preview-doc="Aadhaar Card – Front" data-doc-file="${escapeHtml(p.aadhaarFront || "aadhaar_front.jpg")}">
-                                <div class="doc-thumb"><i class="bi bi-card-heading"></i></div>
-                                <div class="doc-name">Aadhaar (Front)</div>
-                            </div>
-                            <div class="doc-card" data-preview-doc="Aadhaar Card – Back" data-doc-file="${escapeHtml(p.aadhaarBack || "aadhaar_back.jpg")}">
-                                <div class="doc-thumb"><i class="bi bi-card-text"></i></div>
-                                <div class="doc-name">Aadhaar (Back)</div>
-                            </div>
-                            <div class="doc-card" data-preview-doc="Your ID" data-doc-file="${escapeHtml(p.yourId || "id_card.jpg")}">
-                                <div class="doc-thumb"><i class="bi bi-person-vcard"></i></div>
-                                <div class="doc-name">Your ID</div>
-                            </div>
-                        </div>
+                        ${buildProfileDocsGridHtml(p)}
                     </div>
                 </div>
             </div>
@@ -915,13 +1013,12 @@ function bindProfileDetailInteractions(profile) {
     moduleContainer.querySelectorAll("[data-preview-doc]").forEach(el => {
         el.addEventListener("click", () => {
             const docLabel = el.dataset.previewDoc;
-            const docFile = el.dataset.docFile;
+            const fallbackKey = el.dataset.docFallback || "yourId";
+            const docFile = resolveImageUrl(el.dataset.docFile, fallbackKey);
             openModal(docLabel, `
-                <div class="text-center p-4 bg-light rounded-4 border">
-                    <i class="bi bi-file-earmark-check text-primary" style="font-size:3rem;"></i>
-                    <h6 class="fw-bold mt-2 mb-1">${escapeHtml(docLabel)}</h6>
-                    <p class="text-muted small mb-3">File Reference: <strong>${escapeHtml(docFile)}</strong></p>
-                    <div class="small text-secondary">Resident: ${escapeHtml(profile ? profile.fullName : "—")} &bull; Month: ${escapeHtml(state.selectedMonth)}</div>
+                <div class="text-center">
+                    <div class="small text-secondary mb-1">Resident: <strong>${escapeHtml(profile ? profile.fullName : "—")}</strong> &bull; Month: <strong>${escapeHtml(state.selectedMonth)}</strong></div>
+                    ${buildModalImageBlockHtml(docLabel, docFile, fallbackKey)}
                 </div>
             `);
         });
@@ -960,7 +1057,12 @@ function renderProfileForm(existingProfile, allProfilesForSelect = null) {
         guardianName: "", guardianMobile: "", homeAddress: "",
         bookingDate: "", shiftingDate: "", roomNumber: "", roomType: "2 Seater",
         bookingAmount: 5000, registrationFee: 1000, monthlyRent: 7000, securityDeposit: 7000,
-        paymentMode: "UPI", paymentReceipt: "", aadhaarFront: "", aadhaarBack: "", yourId: "",
+        paymentMode: "UPI",
+        profilePhoto: FALLBACK_IMAGES.profilePhoto,
+        paymentReceipt: FALLBACK_IMAGES.paymentReceipt,
+        aadhaarFront: FALLBACK_IMAGES.aadhaarFront,
+        aadhaarBack: FALLBACK_IMAGES.aadhaarBack,
+        yourId: FALLBACK_IMAGES.yourId,
         companyName: "", companyAddress: ""
     };
 
@@ -1027,16 +1129,17 @@ function renderProfileForm(existingProfile, allProfilesForSelect = null) {
                         ${["UPI", "Online", "Cash", "Bank Transfer"].map(m => `<option value="${m}" ${p.paymentMode === m ? "selected" : ""}>${m}</option>`).join("")}
                     </select>
                 </div>
-                <div class="col-md-4"><label class="form-label small fw-semibold">Payment Receipt File</label><input name="paymentReceipt" class="form-control" placeholder="receipt.pdf" value="${escapeHtml(p.paymentReceipt)}"></div>
-                <div class="col-md-4"><label class="form-label small fw-semibold">Your ID File</label><input name="yourId" class="form-control" placeholder="id_card.jpg" value="${escapeHtml(p.yourId)}"></div>
+                ${buildFormImageInputHtml({ name: "profilePhoto", label: "Profile Photo Path / URL", value: p.profilePhoto, fallbackKey: "profilePhoto", round: true, colClass: "col-md-4" })}
+                ${buildFormImageInputHtml({ name: "paymentReceipt", label: "Payment Receipt Image", value: p.paymentReceipt, fallbackKey: "paymentReceipt", colClass: "col-md-4" })}
             </div>
 
             <h6 class="fw-bold text-primary mb-3"><i class="bi bi-briefcase me-1"></i>Documents &amp; Employee Details</h6>
             <div class="row g-3 mb-4">
-                <div class="col-md-3"><label class="form-label small fw-semibold">Aadhaar Card – Front</label><input name="aadhaarFront" class="form-control" placeholder="aadhaar_front.jpg" value="${escapeHtml(p.aadhaarFront)}"></div>
-                <div class="col-md-3"><label class="form-label small fw-semibold">Aadhaar Card – Back</label><input name="aadhaarBack" class="form-control" placeholder="aadhaar_back.jpg" value="${escapeHtml(p.aadhaarBack)}"></div>
-                <div class="col-md-3"><label class="form-label small fw-semibold">Company Name (Employees)</label><input name="companyName" class="form-control" value="${escapeHtml(p.companyName)}"></div>
-                <div class="col-md-3"><label class="form-label small fw-semibold">Company Address</label><input name="companyAddress" class="form-control" value="${escapeHtml(p.companyAddress)}"></div>
+                ${buildFormImageInputHtml({ name: "aadhaarFront", label: "Aadhaar Card – Front", value: p.aadhaarFront, fallbackKey: "aadhaarFront", colClass: "col-md-4" })}
+                ${buildFormImageInputHtml({ name: "aadhaarBack", label: "Aadhaar Card – Back", value: p.aadhaarBack, fallbackKey: "aadhaarBack", colClass: "col-md-4" })}
+                ${buildFormImageInputHtml({ name: "yourId", label: "Your ID Image", value: p.yourId, fallbackKey: "yourId", colClass: "col-md-4" })}
+                <div class="col-md-6"><label class="form-label small fw-semibold">Company Name (Employees)</label><input name="companyName" class="form-control" value="${escapeHtml(p.companyName)}"></div>
+                <div class="col-md-6"><label class="form-label small fw-semibold">Company Address</label><input name="companyAddress" class="form-control" value="${escapeHtml(p.companyAddress)}"></div>
             </div>
 
             <div class="d-flex gap-2 justify-content-end">
@@ -1050,6 +1153,7 @@ function renderProfileForm(existingProfile, allProfilesForSelect = null) {
 
     document.getElementById("backToAllProfilesBtn").addEventListener("click", () => switchModule("profile", "all"));
     document.getElementById("cancelProfileFormBtn").addEventListener("click", () => switchModule("profile", "all"));
+    bindFormImagePreviews();
 
     const selector = document.getElementById("selectProfileToEdit");
     if (selector) {
@@ -1084,10 +1188,11 @@ function renderProfileForm(existingProfile, allProfilesForSelect = null) {
             monthlyRent: Number(fd.get("monthlyRent")) || 0,
             securityDeposit: Number(fd.get("securityDeposit")) || 0,
             paymentMode: fd.get("paymentMode"),
-            paymentReceipt: fd.get("paymentReceipt").trim() || "receipt_uploaded.pdf",
-            aadhaarFront: fd.get("aadhaarFront").trim() || "aadhaar_front.jpg",
-            aadhaarBack: fd.get("aadhaarBack").trim() || "aadhaar_back.jpg",
-            yourId: fd.get("yourId").trim() || "id_card.jpg",
+            profilePhoto: fd.get("profilePhoto").trim() || FALLBACK_IMAGES.profilePhoto,
+            paymentReceipt: fd.get("paymentReceipt").trim() || FALLBACK_IMAGES.paymentReceipt,
+            aadhaarFront: fd.get("aadhaarFront").trim() || FALLBACK_IMAGES.aadhaarFront,
+            aadhaarBack: fd.get("aadhaarBack").trim() || FALLBACK_IMAGES.aadhaarBack,
+            yourId: fd.get("yourId").trim() || FALLBACK_IMAGES.yourId,
             employeeFullName: fd.get("userType") === "Employee" ? fd.get("fullName").trim() : "",
             employeeMobile: fd.get("userType") === "Employee" ? fd.get("mobileNumber").trim() : "",
             companyName: fd.get("companyName").trim(),
@@ -1250,7 +1355,10 @@ function renderPaymentModule() {
                                     <td>${escapeHtml(p.paymentMode)}</td>
                                     <td><span class="badge-soft ${p.status === "Paid" ? "badge-paid" : "badge-pending"}">${escapeHtml(p.status)}</span></td>
                                     <td class="text-nowrap">
-                                        <button type="button" class="action-icon-btn me-1" data-view-payment="${escapeHtml(p.id)}" title="View Receipt & Details"><i class="bi bi-file-earmark-image"></i></button>
+                                        <button type="button" class="btn btn-sm btn-light border d-inline-flex align-items-center gap-1 py-1 px-2 me-1" data-view-payment="${escapeHtml(p.id)}" title="View Receipt & Details">
+                                            ${buildImageTag(p.receipt, "paymentReceipt", "Receipt", "mini-receipt-thumb")}
+                                            <span class="small fw-semibold text-primary">View</span>
+                                        </button>
                                         ${p.status === "Pending" ? `<button type="button" class="action-icon-btn text-success" data-mark-paid="${escapeHtml(p.id)}" title="Mark Paid"><i class="bi bi-check-lg"></i></button>` : ""}
                                     </td>
                                 </tr>
@@ -1265,10 +1373,13 @@ function renderPaymentModule() {
                 ${pageRecords.length ? pageRecords.map(p => `
                     <div class="mobile-record-card" data-view-payment="${escapeHtml(p.id)}">
                         <div class="d-flex justify-content-between align-items-start gap-2">
-                            <div>
-                                <div class="fw-bold">${escapeHtml(p.fullName)}</div>
-                                <div class="small text-muted">${escapeHtml(p.roomNumber)} &bull; ${escapeHtml(p.roomType)} &bull; ${escapeHtml(p.amountType)}</div>
-                                <div class="small text-muted">${escapeHtml(p.paymentDate)} &bull; ${escapeHtml(p.paymentMode)}</div>
+                            <div class="d-flex align-items-center gap-2 min-w-0">
+                                ${buildImageTag(p.receipt, "paymentReceipt", "Receipt", "mini-receipt-thumb")}
+                                <div class="min-w-0">
+                                    <div class="fw-bold text-truncate">${escapeHtml(p.fullName)}</div>
+                                    <div class="small text-muted">${escapeHtml(p.roomNumber)} &bull; ${escapeHtml(p.roomType)} &bull; ${escapeHtml(p.amountType)}</div>
+                                    <div class="small text-muted">${escapeHtml(p.paymentDate)} &bull; ${escapeHtml(p.paymentMode)}</div>
+                                </div>
                             </div>
                             <div class="text-end">
                                 <div class="fw-bold text-primary">${formatINR(p.amountPaid)}</div>
@@ -1346,8 +1457,8 @@ function renderPaymentModule() {
                     <div class="detail-row"><span class="detail-label">Payment Mode</span><span class="detail-val">${escapeHtml(rec.paymentMode)}</span></div>
                     <div class="detail-row"><span class="detail-label">Status</span><span class="detail-val">${escapeHtml(rec.status)}</span></div>
                     <div class="detail-row"><span class="detail-label">Rating</span><span class="detail-val text-warning">${stars}</span></div>
-                    <div class="detail-row"><span class="detail-label">Screenshot / Receipt</span><span class="detail-val">${escapeHtml(rec.receipt || "Uploaded")}</span></div>
                 </div>
+                ${buildModalImageBlockHtml("Payment Receipt", rec.receipt, "paymentReceipt")}
             `);
         });
     });
@@ -1411,11 +1522,11 @@ function renderAddPaymentForm() {
                     <label class="form-label small fw-semibold">Status</label>
                     <select name="status" class="form-select"><option value="Paid">Paid</option><option value="Pending">Pending</option></select>
                 </div>
-                <div class="col-md-3"><label class="form-label small fw-semibold">Receipt File Name</label><input name="receipt" class="form-control" placeholder="receipt.jpg"></div>
                 <div class="col-md-3">
                     <label class="form-label small fw-semibold">Rating (1–5)</label>
                     <select name="rating" class="form-select"><option value="5">5 ★</option><option value="4">4 ★</option><option value="3">3 ★</option><option value="2">2 ★</option><option value="1">1 ★</option></select>
                 </div>
+                ${buildFormImageInputHtml({ name: "receipt", label: "Receipt Image Path / URL", value: FALLBACK_IMAGES.paymentReceipt, fallbackKey: "paymentReceipt", colClass: "col-md-6" })}
             </div>
             <div class="d-flex gap-2 justify-content-end mt-4">
                 <button type="button" class="btn btn-light border rounded-3 px-4" id="cancelAddPaymentBtn">Cancel</button>
@@ -1426,6 +1537,7 @@ function renderAddPaymentForm() {
 
     document.getElementById("backToPaymentsBtn").addEventListener("click", () => switchModule("payment", "all"));
     document.getElementById("cancelAddPaymentBtn").addEventListener("click", () => switchModule("payment", "all"));
+    bindFormImagePreviews();
     document.getElementById("addPaymentForm").addEventListener("submit", e => {
         e.preventDefault();
         const fd = new FormData(e.target);
@@ -1445,7 +1557,7 @@ function renderAddPaymentForm() {
             paymentDate: fd.get("paymentDate").trim() || formatNowTimestamp().split(",")[0],
             paymentMode: fd.get("paymentMode"),
             status: fd.get("status"),
-            receipt: fd.get("receipt").trim() || "payment_receipt.jpg",
+            receipt: fd.get("receipt").trim() || FALLBACK_IMAGES.paymentReceipt,
             rating: Number(fd.get("rating")) || 5
         });
         switchModule("payment", "all");
@@ -1585,8 +1697,9 @@ function renderExpenseModule() {
                                             <td>${escapeHtml(r.head)}</td>
                                             <td class="text-end fw-semibold">${formatINR(r.amount)}</td>
                                             <td class="text-center">
-                                                <button type="button" class="action-icon-btn" data-exp-receipt="${escapeHtml(r.head)}" data-exp-file="${escapeHtml(r.receipt || "monthly_bill.pdf")}" data-exp-amt="${r.amount}" data-exp-by="${escapeHtml(r.yourName)}">
-                                                    <i class="bi bi-file-earmark-image"></i>
+                                                <button type="button" class="btn btn-sm btn-light border d-inline-flex align-items-center gap-1 py-0 px-2" data-exp-receipt="${escapeHtml(r.head)}" data-exp-file="${escapeHtml(r.receipt || FALLBACK_IMAGES.expenseReceipt)}" data-exp-amt="${r.amount}" data-exp-by="${escapeHtml(r.yourName)}" title="View Receipt Image">
+                                                    ${buildImageTag(r.receipt, "expenseReceipt", "Receipt", "mini-receipt-thumb")}
+                                                    <span class="small text-primary fw-semibold">View</span>
                                                 </button>
                                             </td>
                                         </tr>
@@ -1643,7 +1756,7 @@ function renderExpenseModule() {
                     <article class="panel-card">
                         <div class="panel-header">
                             <h3 class="panel-title"><i class="bi bi-calendar-day"></i> Daily Expense (Average – ${escapeHtml(state.selectedMonth)})</h3>
-                            ${dailyRec ? `<button type="button" class="action-icon-btn" data-exp-receipt="Daily Food Service Bill / Receipt" data-exp-file="${escapeHtml(dailyRec.receipt || "daily_avg.jpg")}" data-exp-amt="${totals.dailyAvgTotal}" data-exp-by="${escapeHtml(dailyRec.yourName)}" title="View Receipt"><i class="bi bi-file-earmark-image"></i></button>` : ""}
+                            ${dailyRec ? `<button type="button" class="btn btn-sm btn-light border d-inline-flex align-items-center gap-1 py-1 px-2" data-exp-receipt="Daily Food Service Bill / Receipt" data-exp-file="${escapeHtml(dailyRec.receipt || FALLBACK_IMAGES.expenseReceipt)}" data-exp-amt="${totals.dailyAvgTotal}" data-exp-by="${escapeHtml(dailyRec.yourName)}" title="View Receipt">${buildImageTag(dailyRec.receipt, "expenseReceipt", "Receipt", "mini-receipt-thumb")}<span class="small text-primary fw-semibold">Receipt</span></button>` : ""}
                         </div>
                         <div class="p-3 rounded-3 mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2" style="background:var(--blue-50);border:1px solid var(--border-color);">
                             <div>
@@ -1743,28 +1856,13 @@ function renderExpenseModule() {
                         <span class="detail-label text-dark fw-bold">Total ${escapeHtml(w.weekLabel)} Expense</span>
                         <span class="detail-val text-primary fs-6">${formatINR(total)}</span>
                     </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Weekly Food Service Bill / Receipt</span>
-                        <span class="detail-val">${escapeHtml(w.receipt || "Uploaded")}</span>
-                    </div>
                 </div>
+                ${buildModalImageBlockHtml(`${w.weekLabel} Bill / Receipt`, w.receipt, "expenseReceipt")}
             `);
         });
     });
 
-    moduleContainer.querySelectorAll("[data-exp-receipt]").forEach(btn => {
-        btn.addEventListener("click", () => {
-            openModal("Expense Bill / Receipt", `
-                <div class="detail-list">
-                    <div class="detail-row"><span class="detail-label">Expense Head</span><span class="detail-val">${escapeHtml(btn.dataset.expReceipt)}</span></div>
-                    <div class="detail-row"><span class="detail-label">Amount</span><span class="detail-val text-primary fw-bold">${formatINR(btn.dataset.expAmt)}</span></div>
-                    <div class="detail-row"><span class="detail-label">Recorded By</span><span class="detail-val">${escapeHtml(btn.dataset.expBy)}</span></div>
-                    <div class="detail-row"><span class="detail-label">Month</span><span class="detail-val">${escapeHtml(state.selectedMonth)}</span></div>
-                    <div class="detail-row"><span class="detail-label">Receipt File</span><span class="detail-val">${escapeHtml(btn.dataset.expFile)}</span></div>
-                </div>
-            `);
-        });
-    });
+    bindExpenseReceiptButtons();
 }
 
 function renderAddExpenseForm() {
@@ -1798,9 +1896,9 @@ function renderAddExpenseForm() {
                     </div>
                     <div class="col-md-4"><label class="form-label small fw-semibold">Date Range</label><input name="dateRange" class="form-control" placeholder="e.g. 01 Dec – 07 Dec"></div>
                 ` : `
-                    <div class="col-md-8"><label class="form-label small fw-semibold">${freq === "monthly" ? "Monthly Bill / Receipt" : "Daily Food Service Bill / Receipt"}</label><input name="receipt" class="form-control" placeholder="bill_receipt.pdf"></div>
+                    ${buildFormImageInputHtml({ name: "receipt", label: freq === "monthly" ? "Monthly Bill / Receipt Image" : "Daily Food Service Bill / Receipt Image", value: FALLBACK_IMAGES.expenseReceipt, fallbackKey: "expenseReceipt", colClass: "col-md-8" })}
                 `}
-                ${freq === "weekly" ? `<div class="col-md-6"><label class="form-label small fw-semibold">Weekly Food Service Bill / Receipt</label><input name="receipt" class="form-control" placeholder="weekly_bill.jpg"></div>` : ""}
+                ${freq === "weekly" ? buildFormImageInputHtml({ name: "receipt", label: "Weekly Food Service Bill / Receipt Image", value: FALLBACK_IMAGES.expenseReceipt, fallbackKey: "expenseReceipt", colClass: "col-md-6" }) : ""}
                 ${freq === "daily" ? `<div class="col-md-12"><label class="form-label small fw-semibold">Daily Average Note</label><input name="note" class="form-control" value="Average daily operational expense for ${escapeHtml(state.selectedMonth)}."></div>` : ""}
             </div>
 
@@ -1823,6 +1921,7 @@ function renderAddExpenseForm() {
 
     document.getElementById("backToExpOverviewBtn").addEventListener("click", () => switchModule("expense", "overview"));
     document.getElementById("cancelExpFormBtn").addEventListener("click", () => switchModule("expense", "overview"));
+    bindFormImagePreviews();
     moduleContainer.querySelectorAll("[data-exp-freq]").forEach(btn => {
         btn.addEventListener("click", () => {
             state.addExpenseFreq = btn.dataset.expFreq;
@@ -1842,7 +1941,7 @@ function renderAddExpenseForm() {
                 id: "EXP-M-" + Date.now(),
                 yourName: fd.get("yourName").trim(),
                 date: formatNowTimestamp().split(",")[0],
-                receipt: fd.get("receipt").trim() || "monthly_bill.pdf",
+                receipt: fd.get("receipt").trim() || FALLBACK_IMAGES.expenseReceipt,
                 items
             }];
         } else if (freq === "weekly") {
@@ -1852,7 +1951,7 @@ function renderAddExpenseForm() {
                 weekLabel: wk,
                 dateRange: fd.get("dateRange").trim() || wk,
                 yourName: fd.get("yourName").trim(),
-                receipt: fd.get("receipt").trim() || "weekly_bill.jpg",
+                receipt: fd.get("receipt").trim() || FALLBACK_IMAGES.expenseReceipt,
                 items
             };
             const existingIdx = exp.weekly.findIndex(w => w.weekLabel === wk);
@@ -1863,7 +1962,7 @@ function renderAddExpenseForm() {
                 id: "EXP-D-" + Date.now(),
                 yourName: fd.get("yourName").trim(),
                 note: fd.get("note").trim(),
-                receipt: fd.get("receipt").trim() || "daily_avg.jpg",
+                receipt: fd.get("receipt").trim() || FALLBACK_IMAGES.expenseReceipt,
                 items
             }];
         }
@@ -1899,7 +1998,12 @@ function renderExpenseHistory() {
                                     <td class="fw-semibold">${escapeHtml(r.label)}</td>
                                     <td>${escapeHtml(r.by)}</td>
                                     <td class="text-end fw-bold">${formatINR(r.total)}</td>
-                                    <td>${escapeHtml(r.receipt || "—")}</td>
+                                    <td>
+                                        <button type="button" class="btn btn-sm btn-light border d-inline-flex align-items-center gap-2 py-1 px-2" data-exp-receipt="${escapeHtml(r.label)}" data-exp-file="${escapeHtml(r.receipt || FALLBACK_IMAGES.expenseReceipt)}" data-exp-amt="${r.total}" data-exp-by="${escapeHtml(r.by)}">
+                                            ${buildImageTag(r.receipt, "expenseReceipt", "Receipt", "mini-receipt-thumb")}
+                                            <span class="small text-primary fw-semibold">View Receipt</span>
+                                        </button>
+                                    </td>
                                 </tr>
                             `).join("") : `<tr><td colspan="6" class="empty-cell">No expense history found for ${escapeHtml(state.selectedMonth)}.</td></tr>`}
                         </tbody>
@@ -1909,6 +2013,7 @@ function renderExpenseHistory() {
         </div>
     `;
     document.getElementById("backFromExpHistory").addEventListener("click", () => switchModule("expense", "overview"));
+    bindExpenseReceiptButtons();
 }
 
 /* ==========================================================================

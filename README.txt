@@ -27,6 +27,13 @@ the-elite-stay-management-report/
 ├── index.html
 ├── css/
 │   └── style.css
+├── images/          <-- Replace dummy images here or update simple paths in js/data.js
+│   ├── profile.jpg
+│   ├── aadhaar-front.jpg
+│   ├── aadhaar-back.jpg
+│   ├── id-card.jpg
+│   ├── payment-receipt.jpg
+│   └── expense-receipt.jpg
 ├── js/
 │   ├── data.js      <-- Edit monthlyData here to add/update real month-wise records
 │   └── app.js       <-- UI rendering, filters, navigation & session logic

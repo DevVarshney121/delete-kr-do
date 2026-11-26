@@ -21,6 +21,18 @@ const AVAILABLE_MONTHS = [
 ];
 
 /**
+ * Simple default image paths (replace files inside images/ or update paths per record below).
+ */
+const DEFAULT_IMAGES = {
+    profilePhoto: "images/profile.jpg",
+    paymentReceipt: "images/payment-receipt.jpg",
+    aadhaarFront: "images/aadhaar-front.jpg",
+    aadhaarBack: "images/aadhaar-back.jpg",
+    yourId: "images/id-card.jpg",
+    expenseReceipt: "images/expense-receipt.jpg"
+};
+
+/**
  * Helper to create an empty month skeleton so future months are always ready.
  */
 function createEmptyMonthData() {
@@ -67,10 +79,11 @@ const monthlyData = {
                 monthlyRent: 7000,
                 securityDeposit: 7000,
                 paymentMode: "UPI",
-                paymentReceipt: "receipt_aman_dec2026.pdf",
-                aadhaarFront: "aadhaar_front_aman.jpg",
-                aadhaarBack: "aadhaar_back_aman.jpg",
-                yourId: "student_id_aman.jpg",
+                profilePhoto: "images/profile.jpg",
+                paymentReceipt: "images/payment-receipt.jpg",
+                aadhaarFront: "images/aadhaar-front.jpg",
+                aadhaarBack: "images/aadhaar-back.jpg",
+                yourId: "images/id-card.jpg",
                 employeeFullName: "",
                 employeeMobile: "",
                 companyName: "",
@@ -98,10 +111,11 @@ const monthlyData = {
                 monthlyRent: 6500,
                 securityDeposit: 6500,
                 paymentMode: "Online",
-                paymentReceipt: "receipt_priya_dec2026.pdf",
-                aadhaarFront: "aadhaar_front_priya.jpg",
-                aadhaarBack: "aadhaar_back_priya.jpg",
-                yourId: "student_id_priya.jpg",
+                profilePhoto: "images/profile.jpg",
+                paymentReceipt: "images/payment-receipt.jpg",
+                aadhaarFront: "images/aadhaar-front.jpg",
+                aadhaarBack: "images/aadhaar-back.jpg",
+                yourId: "images/id-card.jpg",
                 employeeFullName: "",
                 employeeMobile: "",
                 companyName: "",
@@ -129,10 +143,11 @@ const monthlyData = {
                 monthlyRent: 11000,
                 securityDeposit: 11000,
                 paymentMode: "Cash",
-                paymentReceipt: "receipt_rohit_dec2026.pdf",
-                aadhaarFront: "aadhaar_front_rohit.jpg",
-                aadhaarBack: "aadhaar_back_rohit.jpg",
-                yourId: "emp_id_rohit.jpg",
+                profilePhoto: "images/profile.jpg",
+                paymentReceipt: "images/payment-receipt.jpg",
+                aadhaarFront: "images/aadhaar-front.jpg",
+                aadhaarBack: "images/aadhaar-back.jpg",
+                yourId: "images/id-card.jpg",
                 employeeFullName: "Rohit Singh",
                 employeeMobile: "9123456780",
                 companyName: "Infosys Technologies",
@@ -160,10 +175,11 @@ const monthlyData = {
                 monthlyRent: 6500,
                 securityDeposit: 6500,
                 paymentMode: "UPI",
-                paymentReceipt: "receipt_nikita_dec2026.pdf",
-                aadhaarFront: "aadhaar_front_nikita.jpg",
-                aadhaarBack: "aadhaar_back_nikita.jpg",
-                yourId: "student_id_nikita.jpg",
+                profilePhoto: "images/profile.jpg",
+                paymentReceipt: "images/payment-receipt.jpg",
+                aadhaarFront: "images/aadhaar-front.jpg",
+                aadhaarBack: "images/aadhaar-back.jpg",
+                yourId: "images/id-card.jpg",
                 employeeFullName: "",
                 employeeMobile: "",
                 companyName: "",
@@ -191,10 +207,11 @@ const monthlyData = {
                 monthlyRent: 8000,
                 securityDeposit: 8000,
                 paymentMode: "Online",
-                paymentReceipt: "receipt_rohitk_dec2026.pdf",
-                aadhaarFront: "aadhaar_front_rohitk.jpg",
-                aadhaarBack: "aadhaar_back_rohitk.jpg",
-                yourId: "emp_id_rohitk.jpg",
+                profilePhoto: "images/profile.jpg",
+                paymentReceipt: "images/payment-receipt.jpg",
+                aadhaarFront: "images/aadhaar-front.jpg",
+                aadhaarBack: "images/aadhaar-back.jpg",
+                yourId: "images/id-card.jpg",
                 employeeFullName: "Rohit Kumar",
                 employeeMobile: "9012345678",
                 companyName: "TCS Digital Hub",
@@ -219,7 +236,7 @@ const monthlyData = {
                 paymentDate: "02 Dec 2026",
                 paymentMode: "UPI",
                 status: "Paid",
-                receipt: "pay_aman_dec2026.jpg",
+                receipt: "images/payment-receipt.jpg",
                 rating: 5
             },
             {
@@ -238,7 +255,7 @@ const monthlyData = {
                 paymentDate: "05 Dec 2026",
                 paymentMode: "Online",
                 status: "Paid",
-                receipt: "pay_priya_dec2026.jpg",
+                receipt: "images/payment-receipt.jpg",
                 rating: 4
             },
             {
@@ -257,7 +274,7 @@ const monthlyData = {
                 paymentDate: "10 Dec 2026",
                 paymentMode: "UPI",
                 status: "Paid",
-                receipt: "pay_nikita_dec2026.jpg",
+                receipt: "images/payment-receipt.jpg",
                 rating: 5
             },
             {
@@ -276,7 +293,7 @@ const monthlyData = {
                 paymentDate: "14 Dec 2026",
                 paymentMode: "Online",
                 status: "Paid",
-                receipt: "pay_rohitk_dec2026.jpg",
+                receipt: "images/payment-receipt.jpg",
                 rating: 4
             },
             {
@@ -295,7 +312,7 @@ const monthlyData = {
                 paymentDate: "28 Dec 2026",
                 paymentMode: "Cash",
                 status: "Pending",
-                receipt: "pay_rohit_dec2026.jpg",
+                receipt: "images/payment-receipt.jpg",
                 rating: 4
             }
         ],
@@ -306,7 +323,7 @@ const monthlyData = {
                     id: "EXP-M-DEC-1",
                     yourName: "Dev Gupta",
                     date: "01 Dec 2026",
-                    receipt: "monthly_bills_dec2026.pdf",
+                    receipt: "images/expense-receipt.jpg",
                     items: {
                         "Property Rent": 85000,
                         "Electricity Bill": 12500,
@@ -330,7 +347,7 @@ const monthlyData = {
                     weekLabel: "Week 1",
                     dateRange: "01 Dec – 07 Dec",
                     yourName: "Dev Gupta",
-                    receipt: "weekly_bill_w1_dec2026.jpg",
+                    receipt: "images/expense-receipt.jpg",
                     items: {
                         "Vegetables": 2200,
                         "Grocery": 2800,
@@ -344,7 +361,7 @@ const monthlyData = {
                     weekLabel: "Week 2",
                     dateRange: "08 Dec – 14 Dec",
                     yourName: "Dev Gupta",
-                    receipt: "weekly_bill_w2_dec2026.jpg",
+                    receipt: "images/expense-receipt.jpg",
                     items: {
                         "Vegetables": 2000,
                         "Grocery": 2600,
@@ -358,7 +375,7 @@ const monthlyData = {
                     weekLabel: "Week 3",
                     dateRange: "15 Dec – 21 Dec",
                     yourName: "Dev Gupta",
-                    receipt: "weekly_bill_w3_dec2026.jpg",
+                    receipt: "images/expense-receipt.jpg",
                     items: {
                         "Vegetables": 2400,
                         "Grocery": 3000,
@@ -372,7 +389,7 @@ const monthlyData = {
                     weekLabel: "Week 4",
                     dateRange: "22 Dec – 28 Dec",
                     yourName: "Dev Gupta",
-                    receipt: "weekly_bill_w4_dec2026.jpg",
+                    receipt: "images/expense-receipt.jpg",
                     items: {
                         "Vegetables": 2300,
                         "Grocery": 2900,
@@ -387,7 +404,7 @@ const monthlyData = {
                     id: "EXP-D-DEC-1",
                     yourName: "Dev Gupta",
                     note: "Average daily operational expense for December 2026.",
-                    receipt: "daily_avg_dec2026.jpg",
+                    receipt: "images/expense-receipt.jpg",
                     items: {
                         "Petrol": 400,
                         "Milk": 900,
@@ -452,10 +469,11 @@ const monthlyData = {
                 monthlyRent: 7500,
                 securityDeposit: 7500,
                 paymentMode: "UPI",
-                paymentReceipt: "receipt_siddharth_jan2027.pdf",
-                aadhaarFront: "aadhaar_front_sid.jpg",
-                aadhaarBack: "aadhaar_back_sid.jpg",
-                yourId: "student_id_sid.jpg",
+                profilePhoto: "images/profile.jpg",
+                paymentReceipt: "images/payment-receipt.jpg",
+                aadhaarFront: "images/aadhaar-front.jpg",
+                aadhaarBack: "images/aadhaar-back.jpg",
+                yourId: "images/id-card.jpg",
                 employeeFullName: "",
                 employeeMobile: "",
                 companyName: "",
@@ -483,10 +501,11 @@ const monthlyData = {
                 monthlyRent: 11500,
                 securityDeposit: 11500,
                 paymentMode: "Online",
-                paymentReceipt: "receipt_megha_jan2027.pdf",
-                aadhaarFront: "aadhaar_front_megha.jpg",
-                aadhaarBack: "aadhaar_back_megha.jpg",
-                yourId: "emp_id_megha.jpg",
+                profilePhoto: "images/profile.jpg",
+                paymentReceipt: "images/payment-receipt.jpg",
+                aadhaarFront: "images/aadhaar-front.jpg",
+                aadhaarBack: "images/aadhaar-back.jpg",
+                yourId: "images/id-card.jpg",
                 employeeFullName: "Megha Nair",
                 employeeMobile: "9871234500",
                 companyName: "HCL Technologies",
@@ -511,7 +530,7 @@ const monthlyData = {
                 paymentDate: "03 Jan 2027",
                 paymentMode: "UPI",
                 status: "Paid",
-                receipt: "pay_siddharth_jan2027.jpg",
+                receipt: "images/payment-receipt.jpg",
                 rating: 5
             },
             {
@@ -530,7 +549,7 @@ const monthlyData = {
                 paymentDate: "07 Jan 2027",
                 paymentMode: "Online",
                 status: "Paid",
-                receipt: "pay_megha_jan2027.jpg",
+                receipt: "images/payment-receipt.jpg",
                 rating: 5
             },
             {
@@ -549,7 +568,7 @@ const monthlyData = {
                 paymentDate: "10 Jan 2027",
                 paymentMode: "UPI",
                 status: "Pending",
-                receipt: "pay_aman_jan2027.jpg",
+                receipt: "images/payment-receipt.jpg",
                 rating: 4
             }
         ],
@@ -560,7 +579,7 @@ const monthlyData = {
                     id: "EXP-M-JAN-1",
                     yourName: "Dev Gupta",
                     date: "01 Jan 2027",
-                    receipt: "monthly_bills_jan2027.pdf",
+                    receipt: "images/expense-receipt.jpg",
                     items: {
                         "Property Rent": 85000,
                         "Electricity Bill": 14000,
@@ -584,7 +603,7 @@ const monthlyData = {
                     weekLabel: "Week 1",
                     dateRange: "01 Jan – 07 Jan",
                     yourName: "Dev Gupta",
-                    receipt: "weekly_bill_w1_jan2027.jpg",
+                    receipt: "images/expense-receipt.jpg",
                     items: {
                         "Vegetables": 2300,
                         "Grocery": 2900,
@@ -598,7 +617,7 @@ const monthlyData = {
                     weekLabel: "Week 2",
                     dateRange: "08 Jan – 14 Jan",
                     yourName: "Dev Gupta",
-                    receipt: "weekly_bill_w2_jan2027.jpg",
+                    receipt: "images/expense-receipt.jpg",
                     items: {
                         "Vegetables": 2100,
                         "Grocery": 2700,
@@ -612,7 +631,7 @@ const monthlyData = {
                     weekLabel: "Week 3",
                     dateRange: "15 Jan – 21 Jan",
                     yourName: "Dev Gupta",
-                    receipt: "weekly_bill_w3_jan2027.jpg",
+                    receipt: "images/expense-receipt.jpg",
                     items: {
                         "Vegetables": 2400,
                         "Grocery": 3100,
@@ -626,7 +645,7 @@ const monthlyData = {
                     weekLabel: "Week 4",
                     dateRange: "22 Jan – 28 Jan",
                     yourName: "Dev Gupta",
-                    receipt: "weekly_bill_w4_jan2027.jpg",
+                    receipt: "images/expense-receipt.jpg",
                     items: {
                         "Vegetables": 2500,
                         "Grocery": 3000,
@@ -641,7 +660,7 @@ const monthlyData = {
                     id: "EXP-D-JAN-1",
                     yourName: "Dev Gupta",
                     note: "Average daily operational expense for January 2027.",
-                    receipt: "daily_avg_jan2027.jpg",
+                    receipt: "images/expense-receipt.jpg",
                     items: {
                         "Petrol": 450,
                         "Milk": 950,
