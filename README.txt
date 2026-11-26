@@ -36,6 +36,7 @@ the-elite-stay-management-report/
 │   └── expense-receipt.jpg
 ├── js/
 │   ├── data.js      <-- Edit monthlyData here to add/update real month-wise records
+│   ├── supabase.js  <-- Supabase client config, profile sync & Storage media upload
 │   └── app.js       <-- UI rendering, filters, navigation & session logic
 └── README.txt
 

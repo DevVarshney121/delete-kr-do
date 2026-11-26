@@ -24,6 +24,9 @@ const state = {
     profileDetailTab: "personal",
     profileMobileDetailOpen: false,
     editProfileId: null,
+    supabaseSyncStatus: "idle", // 'idle' | 'loading' | 'connected' | 'error'
+    supabaseSyncError: "",
+    profileNotice: "",
     // Payment state
     paymentSearch: "",
     paymentTypeFilter: "",
@@ -238,17 +241,21 @@ function buildReceiptCardHtml(label, fileUrl, fallbackKey = "paymentReceipt") {
     `;
 }
 
-function buildFormImageInputHtml({ name, label, value, fallbackKey, round = false, colClass = "col-md-4" }) {
+function buildFormImageInputHtml({ name, label, value, fallbackKey, round = false, colClass = "col-md-4", allowFileUpload = false }) {
     const resolved = resolveImageUrl(value, fallbackKey);
     const previewId = `imgPreview_${name}`;
+    const statusId = `imgFileStatus_${name}`;
     const fallback = FALLBACK_IMAGES[fallbackKey] || FALLBACK_IMAGES.profilePhoto;
     return `
         <div class="${colClass}">
             <label class="form-label small fw-semibold">${escapeHtml(label)}</label>
             <input name="${escapeHtml(name)}" class="form-control" placeholder="${escapeHtml(fallback)}" value="${escapeHtml(resolved)}" data-img-preview-input="${escapeHtml(previewId)}" data-img-fallback="${escapeHtml(fallbackKey)}">
+            ${allowFileUpload ? `
+                <input type="file" accept="image/*,.pdf" class="form-control form-control-sm mt-2" data-img-file-input="${escapeHtml(name)}" data-img-preview-target="${escapeHtml(previewId)}" data-img-status-target="${escapeHtml(statusId)}" data-img-fallback="${escapeHtml(fallbackKey)}">
+            ` : ""}
             <div class="form-img-preview-wrap">
                 <img id="${escapeHtml(previewId)}" src="${escapeHtml(isPdfPath(resolved) ? fallback : resolved)}" alt="${escapeHtml(label)}" class="form-img-preview${round ? " round" : ""}" onerror="this.onerror=null;this.src='${escapeHtml(fallback)}';">
-                <div class="small text-muted text-truncate">Preview (${escapeHtml(fallback)})</div>
+                <div id="${escapeHtml(statusId)}" class="small text-muted text-truncate">${allowFileUpload ? "Choose file or keep path" : `Preview (${escapeHtml(fallback)})`}</div>
             </div>
         </div>
     `;
@@ -263,6 +270,29 @@ function bindFormImagePreviews(container = moduleContainer) {
             const fallback = FALLBACK_IMAGES[fallbackKey] || FALLBACK_IMAGES.profilePhoto;
             const nextUrl = resolveImageUrl(input.value, fallbackKey);
             imgEl.src = isPdfPath(nextUrl) ? fallback : nextUrl;
+        });
+    });
+
+    container.querySelectorAll("[data-img-file-input]").forEach(fileInput => {
+        fileInput.addEventListener("change", () => {
+            const file = fileInput.files && fileInput.files[0];
+            const imgEl = document.getElementById(fileInput.dataset.imgPreviewTarget);
+            const statusEl = document.getElementById(fileInput.dataset.imgStatusTarget);
+            const fallbackKey = fileInput.dataset.imgFallback || "profilePhoto";
+            const fallback = FALLBACK_IMAGES[fallbackKey] || FALLBACK_IMAGES.profilePhoto;
+
+            if (!file) {
+                if (statusEl) statusEl.textContent = "Choose file or keep path";
+                return;
+            }
+            if (statusEl) statusEl.textContent = `Selected: ${file.name} (uploads on save)`;
+            if (imgEl) {
+                if (file.type && file.type.startsWith("image/")) {
+                    imgEl.src = URL.createObjectURL(file);
+                } else {
+                    imgEl.src = fallback;
+                }
+            }
         });
     });
 }
@@ -364,11 +394,41 @@ function updateSessionCountdown(loginTime) {
     if (sessionTimerLabel) sessionTimerLabel.textContent = `${remSec}s`;
 }
 
+async function syncProfilesFromSupabase(silent = false) {
+    if (typeof fetchProfilesFromSupabase !== "function" || !isSupabaseReady()) {
+        state.supabaseSyncStatus = "error";
+        state.supabaseSyncError = "Supabase client unavailable";
+        return;
+    }
+
+    if (!silent) {
+        state.supabaseSyncStatus = "loading";
+        state.supabaseSyncError = "";
+        if (state.activeModule === "profile" && state.activeSubView === "all") {
+            renderProfileModule();
+        }
+    }
+
+    const res = await fetchProfilesFromSupabase();
+    if (res.ok) {
+        state.supabaseSyncStatus = "connected";
+        state.supabaseSyncError = "";
+    } else {
+        state.supabaseSyncStatus = "error";
+        state.supabaseSyncError = res.error || "Sync failed";
+    }
+
+    if (!mainArea.classList.contains("d-none")) {
+        renderApp();
+    }
+}
+
 function showMainArea() {
     loginPage.classList.add("d-none");
     mainArea.classList.remove("d-none");
     mainArea.setAttribute("aria-hidden", "false");
     renderApp();
+    syncProfilesFromSupabase();
 }
 
 function showLoginPage() {
@@ -424,6 +484,9 @@ function switchModule(moduleKey, subViewKey = null) {
         closeSidebarDrawer();
     }
     renderApp();
+    if (mod.key === "profile" && state.activeSubView === "all") {
+        syncProfilesFromSupabase(true);
+    }
     window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -552,19 +615,38 @@ function renderProfileModule() {
         return;
     }
 
+    const syncBadge = state.supabaseSyncStatus === "connected"
+        ? `<span class="badge-soft badge-paid ms-2"><i class="bi bi-cloud-check me-1"></i>Supabase Live</span>`
+        : state.supabaseSyncStatus === "loading"
+            ? `<span class="badge-soft badge-room ms-2"><i class="bi bi-arrow-repeat me-1"></i>Syncing...</span>`
+            : state.supabaseSyncStatus === "error"
+                ? `<span class="badge-soft badge-pending ms-2" title="${escapeHtml(state.supabaseSyncError)}"><i class="bi bi-exclamation-triangle me-1"></i>Local Fallback</span>`
+                : "";
+
     moduleContainer.innerHTML = `
         <div class="page-header">
             <div class="page-title-wrap">
                 <div class="page-icon"><i class="bi bi-person-fill"></i></div>
                 <div>
-                    <h1>Profile Management</h1>
+                    <h1>Profile Management ${syncBadge}</h1>
                     <p>Manage all students &amp; employees profiles, booking and payment details.</p>
                 </div>
             </div>
-            <button type="button" class="btn btn-primary rounded-3 fw-semibold" id="quickAddProfileBtn">
-                <i class="bi bi-person-plus me-1"></i>Add Profile
-            </button>
+            <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-outline-primary rounded-3 fw-semibold" id="syncProfilesBtn" title="Refresh from Supabase">
+                    <i class="bi bi-arrow-clockwise me-1"></i>Sync
+                </button>
+                <button type="button" class="btn btn-primary rounded-3 fw-semibold" id="quickAddProfileBtn">
+                    <i class="bi bi-person-plus me-1"></i>Add Profile
+                </button>
+            </div>
         </div>
+        ${state.profileNotice ? `
+            <div class="alert alert-success alert-dismissible fade show rounded-4 border-0 shadow-sm mb-3" role="alert">
+                <i class="bi bi-check-circle-fill me-2"></i>${escapeHtml(state.profileNotice)}
+                <button type="button" class="btn-close" id="dismissProfileNoticeBtn" aria-label="Close"></button>
+            </div>
+        ` : ""}
 
         <section class="kpi-grid">
             <article class="kpi-card highlight">
@@ -714,6 +796,10 @@ function renderProfileModule() {
 
     // Bind events
     document.getElementById("quickAddProfileBtn").addEventListener("click", () => switchModule("profile", "add"));
+    const syncBtn = document.getElementById("syncProfilesBtn");
+    if (syncBtn) syncBtn.addEventListener("click", () => syncProfilesFromSupabase(false));
+    const dismissNoticeBtn = document.getElementById("dismissProfileNoticeBtn");
+    if (dismissNoticeBtn) dismissNoticeBtn.addEventListener("click", () => { state.profileNotice = ""; });
     document.getElementById("profileSearchInput").addEventListener("input", e => {
         state.profileSearch = e.target.value;
         state.profilePage = 1;
@@ -1071,8 +1157,8 @@ function renderProfileForm(existingProfile, allProfilesForSelect = null) {
             <div class="page-title-wrap">
                 <div class="page-icon"><i class="bi ${isEdit ? "bi-pencil-square" : "bi-person-plus-fill"}"></i></div>
                 <div>
-                    <h1>${isEdit ? "Update Profile" : "Add New Profile"}</h1>
-                    <p>${isEdit ? "Modify student/employee record" : "Create a new resident profile"} for ${escapeHtml(state.selectedMonth)}.</p>
+                    <h1>${isEdit ? "Update Profile" : "Add New Profile"} ${!isEdit ? `<span class="badge-soft badge-paid ms-2"><i class="bi bi-cloud-arrow-up me-1"></i>Supabase Live</span>` : ""}</h1>
+                    <p>${isEdit ? "Modify student/employee record" : "Create a new resident profile (auto-saves to Supabase for all devices)"} for ${escapeHtml(state.selectedMonth)}.</p>
                 </div>
             </div>
             <button type="button" class="btn btn-outline-primary rounded-3" id="backToAllProfilesBtn"><i class="bi bi-arrow-left me-1"></i>Back to Profiles</button>
@@ -1129,22 +1215,24 @@ function renderProfileForm(existingProfile, allProfilesForSelect = null) {
                         ${["UPI", "Online", "Cash", "Bank Transfer"].map(m => `<option value="${m}" ${p.paymentMode === m ? "selected" : ""}>${m}</option>`).join("")}
                     </select>
                 </div>
-                ${buildFormImageInputHtml({ name: "profilePhoto", label: "Profile Photo Path / URL", value: p.profilePhoto, fallbackKey: "profilePhoto", round: true, colClass: "col-md-4" })}
-                ${buildFormImageInputHtml({ name: "paymentReceipt", label: "Payment Receipt Image", value: p.paymentReceipt, fallbackKey: "paymentReceipt", colClass: "col-md-4" })}
+                ${buildFormImageInputHtml({ name: "profilePhoto", label: "Profile Photo (Upload or Path)", value: p.profilePhoto, fallbackKey: "profilePhoto", round: true, colClass: "col-md-4", allowFileUpload: !isEdit })}
+                ${buildFormImageInputHtml({ name: "paymentReceipt", label: "Payment Receipt (Upload or Path)", value: p.paymentReceipt, fallbackKey: "paymentReceipt", colClass: "col-md-4", allowFileUpload: !isEdit })}
             </div>
 
             <h6 class="fw-bold text-primary mb-3"><i class="bi bi-briefcase me-1"></i>Documents &amp; Employee Details</h6>
             <div class="row g-3 mb-4">
-                ${buildFormImageInputHtml({ name: "aadhaarFront", label: "Aadhaar Card – Front", value: p.aadhaarFront, fallbackKey: "aadhaarFront", colClass: "col-md-4" })}
-                ${buildFormImageInputHtml({ name: "aadhaarBack", label: "Aadhaar Card – Back", value: p.aadhaarBack, fallbackKey: "aadhaarBack", colClass: "col-md-4" })}
-                ${buildFormImageInputHtml({ name: "yourId", label: "Your ID Image", value: p.yourId, fallbackKey: "yourId", colClass: "col-md-4" })}
+                ${buildFormImageInputHtml({ name: "aadhaarFront", label: "Aadhaar Card – Front", value: p.aadhaarFront, fallbackKey: "aadhaarFront", colClass: "col-md-4", allowFileUpload: !isEdit })}
+                ${buildFormImageInputHtml({ name: "aadhaarBack", label: "Aadhaar Card – Back", value: p.aadhaarBack, fallbackKey: "aadhaarBack", colClass: "col-md-4", allowFileUpload: !isEdit })}
+                ${buildFormImageInputHtml({ name: "yourId", label: "Your ID Image", value: p.yourId, fallbackKey: "yourId", colClass: "col-md-4", allowFileUpload: !isEdit })}
                 <div class="col-md-6"><label class="form-label small fw-semibold">Company Name (Employees)</label><input name="companyName" class="form-control" value="${escapeHtml(p.companyName)}"></div>
                 <div class="col-md-6"><label class="form-label small fw-semibold">Company Address</label><input name="companyAddress" class="form-control" value="${escapeHtml(p.companyAddress)}"></div>
             </div>
 
+            <div id="profileFormError" class="alert alert-danger d-none rounded-3 mb-3" role="alert"></div>
+
             <div class="d-flex gap-2 justify-content-end">
                 <button type="button" class="btn btn-light border rounded-3 px-4" id="cancelProfileFormBtn">Cancel</button>
-                <button type="submit" class="btn btn-primary rounded-3 px-4 fw-semibold">
+                <button type="submit" class="btn btn-primary rounded-3 px-4 fw-semibold" id="submitProfileFormBtn">
                     <i class="bi bi-check2-circle me-1"></i>${isEdit ? "Save Changes" : "Add Profile"}
                 </button>
             </div>
@@ -1163,10 +1251,18 @@ function renderProfileForm(existingProfile, allProfilesForSelect = null) {
         });
     }
 
-    document.getElementById("profileForm").addEventListener("submit", e => {
+    document.getElementById("profileForm").addEventListener("submit", async e => {
         e.preventDefault();
-        const fd = new FormData(e.target);
-        const updatedRecord = {
+        const formEl = e.target;
+        const fd = new FormData(formEl);
+        const submitBtn = document.getElementById("submitProfileFormBtn");
+        const errorBox = document.getElementById("profileFormError");
+        if (errorBox) {
+            errorBox.classList.add("d-none");
+            errorBox.textContent = "";
+        }
+
+        const buildRecord = (mediaUrls = {}) => ({
             id: isEdit ? p.id : "PRF-" + Date.now(),
             timestamp: isEdit ? p.timestamp : formatNowTimestamp(),
             fullName: fd.get("fullName").trim(),
@@ -1188,26 +1284,84 @@ function renderProfileForm(existingProfile, allProfilesForSelect = null) {
             monthlyRent: Number(fd.get("monthlyRent")) || 0,
             securityDeposit: Number(fd.get("securityDeposit")) || 0,
             paymentMode: fd.get("paymentMode"),
-            profilePhoto: fd.get("profilePhoto").trim() || FALLBACK_IMAGES.profilePhoto,
-            paymentReceipt: fd.get("paymentReceipt").trim() || FALLBACK_IMAGES.paymentReceipt,
-            aadhaarFront: fd.get("aadhaarFront").trim() || FALLBACK_IMAGES.aadhaarFront,
-            aadhaarBack: fd.get("aadhaarBack").trim() || FALLBACK_IMAGES.aadhaarBack,
-            yourId: fd.get("yourId").trim() || FALLBACK_IMAGES.yourId,
+            profilePhoto: mediaUrls.profilePhoto || fd.get("profilePhoto").trim() || FALLBACK_IMAGES.profilePhoto,
+            paymentReceipt: mediaUrls.paymentReceipt || fd.get("paymentReceipt").trim() || FALLBACK_IMAGES.paymentReceipt,
+            aadhaarFront: mediaUrls.aadhaarFront || fd.get("aadhaarFront").trim() || FALLBACK_IMAGES.aadhaarFront,
+            aadhaarBack: mediaUrls.aadhaarBack || fd.get("aadhaarBack").trim() || FALLBACK_IMAGES.aadhaarBack,
+            yourId: mediaUrls.yourId || fd.get("yourId").trim() || FALLBACK_IMAGES.yourId,
             employeeFullName: fd.get("userType") === "Employee" ? fd.get("fullName").trim() : "",
             employeeMobile: fd.get("userType") === "Employee" ? fd.get("mobileNumber").trim() : "",
             companyName: fd.get("companyName").trim(),
             companyAddress: fd.get("companyAddress").trim()
-        };
+        });
 
-        const list = getMonthData().profiles;
         if (isEdit) {
+            const updatedRecord = buildRecord();
+            const list = getMonthData().profiles;
             const idx = list.findIndex(item => item.id === p.id);
             if (idx >= 0) list[idx] = updatedRecord;
-        } else {
-            list.unshift(updatedRecord);
+            state.selectedProfileId = updatedRecord.id;
+            switchModule("profile", "all");
+            return;
         }
-        state.selectedProfileId = updatedRecord.id;
-        switchModule("profile", "all");
+
+        // Phase 1 Live Supabase Add Profile (uploads chosen files + inserts DB row)
+        if (!isSupabaseReady()) {
+            if (errorBox) {
+                errorBox.textContent = "Supabase connection unavailable. Please refresh and try again.";
+                errorBox.classList.remove("d-none");
+            }
+            return;
+        }
+
+        const origBtnHtml = submitBtn ? submitBtn.innerHTML : "";
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Saving to Supabase...`;
+        }
+
+        try {
+            const uploadFields = [
+                { field: "profilePhoto", folder: "profile-photos" },
+                { field: "paymentReceipt", folder: "payment-receipts" },
+                { field: "aadhaarFront", folder: "aadhaar-front" },
+                { field: "aadhaarBack", folder: "aadhaar-back" },
+                { field: "yourId", folder: "id-cards" }
+            ];
+
+            const uploadedEntries = await Promise.all(
+                uploadFields.map(async item => {
+                    const fileEl = formEl.querySelector(`[data-img-file-input="${item.field}"]`);
+                    const file = fileEl && fileEl.files && fileEl.files[0];
+                    if (!file) return [item.field, null];
+                    const url = await uploadProfileMediaFile(file, item.folder);
+                    return [item.field, url];
+                })
+            );
+
+            const mediaUrls = Object.fromEntries(uploadedEntries);
+            const newRecord = buildRecord(mediaUrls);
+            const saveRes = await insertProfileToSupabase(newRecord, state.selectedMonth);
+            if (!saveRes.ok) {
+                throw new Error(saveRes.error || "Could not save profile to Supabase.");
+            }
+
+            const savedProfile = saveRes.profile;
+            getMonthData().profiles.unshift(savedProfile);
+            state.selectedProfileId = savedProfile.id;
+            state.supabaseSyncStatus = "connected";
+            state.profileNotice = `Profile "${savedProfile.fullName}" saved live to Supabase (${state.selectedMonth})!`;
+            switchModule("profile", "all");
+        } catch (err) {
+            if (errorBox) {
+                errorBox.textContent = err && err.message ? err.message : "Failed to save profile.";
+                errorBox.classList.remove("d-none");
+            }
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = origBtnHtml;
+            }
+        }
     });
 }
 
